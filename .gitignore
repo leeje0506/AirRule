@@ -340,6 +340,7 @@ wheels/
 *.egg
 
 # 환경
+.airrule_venv
 .env
 .venv
 env/
@@ -407,3 +408,4 @@ dist-ssr
 *.sw?
 
 # DB
+backend/airrule.db

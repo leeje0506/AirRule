@@ -18,7 +18,7 @@ function ProtectedRoute({ children }) {
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user) return <Navigate to="/mapping" replace />;
+  if (user) return <Navigate to="/policies" replace />;
   return children;
 }
 
@@ -27,7 +27,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-        <Route index element={<Navigate to="/mapping" replace />} />
+        <Route index element={<Navigate to="/policies" replace />} />
         <Route path="policies" element={<PolicyPage />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="mapping" element={<MappingPage />} />

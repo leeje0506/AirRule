@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import union_all, literal_column, select
 from app.database import get_db
-from app.models import Mapping, TechItem, PolicyHistory, TechItemHistory
+from app.models import Mapping, TechItem, TechItemHistory
 from app.schemas import MappingUpdate, MappingOut, TechItemOut
 from app.auth import get_current_user
 from app.models import gen_id
@@ -33,15 +33,11 @@ def update_mapping(broadcaster_id: str, body: MappingUpdate, db: Session = Depen
     return MappingOut(broadcaster_id=broadcaster_id, items=items)
 
 
-# ── Global History ───────────────────────────────────────────────
+# ── Tech Item History ────────────────────────────────────────────
+#   (정책 이력은 /api/policies/history 에서 별도로 제공)
 
 @router.get("/api/history")
 def all_history(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    policy_h = (
-        db.query(PolicyHistory)
-        .order_by(PolicyHistory.edited_at.desc())
-        .all()
-    )
     tech_h = (
         db.query(TechItemHistory)
         .order_by(TechItemHistory.edited_at.desc())
@@ -49,15 +45,6 @@ def all_history(db: Session = Depends(get_db), _=Depends(get_current_user)):
     )
 
     result = []
-    for h in policy_h:
-        result.append({
-            "id": h.id,
-            "kind": "policy",
-            "ref_id": h.policy_id,
-            "edited_by": h.edited_by,
-            "edited_at": h.edited_at.isoformat() if h.edited_at else None,
-            "summary": h.summary,
-        })
     for h in tech_h:
         result.append({
             "id": h.id,

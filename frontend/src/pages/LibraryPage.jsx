@@ -1,20 +1,85 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Edit3, Save, X, Info, Code2, Copy, Check as CheckIcon } from 'lucide-react';
+import { Plus, Edit3, Save, X, Code2, Copy, Check as CheckIcon, Search, Layers, Wand2, ShieldCheck, LayoutGrid, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { techItemApi } from '../api/client';
-import { Card, Btn, Pill, Modal, Input, Select } from '../components/ui';
+import { techItemApi, broadcasterApi } from '../api/client';
+import { Btn, Modal, Input, Select } from '../components/ui';
+
+const FUNC_TYPE_OPTIONS = [
+  { value: 'content_only', label: 'content_only (문장)' },
+  { value: 'content_with_params', label: 'content_with_params' },
+  { value: 'content_with_validation_params', label: 'content_with_validation_params' },
+  { value: 'timing', label: 'timing (싱크)' },
+  { value: 'multi_subtitle', label: 'multi_subtitle (자막 리스트)' },
+  { value: 'pair_validation', label: 'pair_validation (앞뒤 쌍)' },
+  { value: 'multi_validation', label: 'multi_validation' },
+];
+
+const BC_ORDER = ['JTBC', 'LGHV', 'SKBB', 'TVCS', 'DLIV', 'TVNG'];
+const BC_PREFIX = { JTBC: 'jtbc', LGHV: 'lghv', SKBB: 'skbb', TVCS: 'tvcs', DLIV: 'dliv', TVNG: 'tvng' };
+
+function sortBroadcasters(list) {
+  return [...list].sort((a, b) => {
+    const ia = BC_ORDER.indexOf(a.code), ib = BC_ORDER.indexOf(b.code);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+}
+
+// 표시 이름 앞 "[방송사]" 접두사 제거 (함수 목록용 — 순수 함수명만)
+const pureName = (name) => (name || '').replace(/^\s*\[[^\]]*\]\s*/, '').trim();
+
+// ── 함수 고정 번호 ───────────────────────────────────────────────
+//   분류: 공통(C) / 전용(S) / 납품(F)  ×  후처리(P) / 검증(V)
+//   각 칸 안에서 function_name 기준으로 번호 부여 → 같은 함수는 같은 번호
+const groupCode = (it) => (it.stage === 'final' ? 'F' : it.scope === 'common' ? 'C' : 'S');
+const typeCode = (it) => (it.type === 'processing' ? 'P' : 'V');
+const GROUP_LABEL = { C: '공통', S: '전용', F: '납품' };
+
+function buildNumbering(items) {
+  const buckets = {}; // 'CP' → Map(function_name → n)
+  [...items].sort((a, b) => a._idx - b._idx).forEach((it) => {
+    if (!it.function_name) return;
+    const key = groupCode(it) + typeCode(it);
+    if (!buckets[key]) buckets[key] = new Map();
+    const m = buckets[key];
+    if (!m.has(it.function_name)) m.set(it.function_name, m.size + 1);
+  });
+  return buckets;
+}
+
+function makeCodeOf(buckets) {
+  return (it) => {
+    if (!it.function_name) return null;
+    const key = groupCode(it) + typeCode(it);
+    const n = buckets[key]?.get(it.function_name);
+    return n ? `${key}-${String(n).padStart(2, '0')}` : null;
+  };
+}
+
+function CodeBadge({ code }) {
+  if (!code) return null;
+  return (
+    <span className="inline-flex items-center text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md bg-slate-800 text-white tracking-wide shrink-0">
+      {code}
+    </span>
+  );
+}
 
 // ── Tech Item Form Modal ────────────────────────────────────────
 
 function TechItemFormModal({ open, onClose, initial, onSaved }) {
-  const [form, setForm] = useState({ type: 'processing', name: '', desc: '', params: {}, scope: 'common', tag: 'planned', source_code: '', edit_summary: '' });
+  const [form, setForm] = useState({
+    type: 'processing', name: '', function_name: '', func_type: 'content_only', stage: 'stage1',
+    desc: '', params: {}, scope: 'common', tag: 'planned', source_code: '', edit_summary: '',
+  });
   const [paramKey, setParamKey] = useState('');
   const [paramVal, setParamVal] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm(initial ? { ...initial, edit_summary: '' } : { type: 'processing', name: '', desc: '', params: {}, scope: 'common', tag: 'planned', source_code: '', edit_summary: '' });
+      setForm(initial
+        ? { ...initial, edit_summary: '' }
+        : { type: 'processing', name: '', function_name: '', func_type: 'content_only', stage: 'stage1', desc: '', params: {}, scope: 'common', tag: 'planned', source_code: '', edit_summary: '' });
       setParamKey(''); setParamVal('');
     }
   }, [initial, open]);
@@ -31,11 +96,8 @@ function TechItemFormModal({ open, onClose, initial, onSaved }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (initial) {
-        await techItemApi.update(initial.id, form);
-      } else {
-        await techItemApi.create(form);
-      }
+      if (initial) await techItemApi.update(initial.id, form);
+      else await techItemApi.create(form);
       onSaved();
       onClose();
     } catch (err) {
@@ -46,16 +108,21 @@ function TechItemFormModal({ open, onClose, initial, onSaved }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={initial ? '항목 수정' : '항목 추가'}>
+    <Modal open={open} onClose={onClose} title={initial ? '항목 수정' : '항목 추가'} wide>
       <div className="grid grid-cols-2 gap-4">
         <Select label="분류" value={form.type} onChange={(v) => setField('type', v)}
           options={[{ value: 'processing', label: '후처리' }, { value: 'validation', label: '검증' }]} />
         <Select label="범위" value={form.scope} onChange={(v) => setField('scope', v)}
           options={[{ value: 'common', label: 'Common' }, { value: 'specific', label: 'Specific' }]} />
+        <Select label="스테이지" value={form.stage} onChange={(v) => setField('stage', v)}
+          options={[{ value: 'stage1', label: 'stage1 (1차)' }, { value: 'stage2', label: 'stage2 (2차)' }, { value: 'final', label: 'final (최종 납품)' }]} />
+        <Select label="태그" value={form.tag} onChange={(v) => setField('tag', v)}
+          options={[{ value: 'planned', label: '예정' }, { value: 'in_progress', label: '진행 중' }, { value: 'applied', label: '적용' }]} />
       </div>
-      <Select label="태그" value={form.tag} onChange={(v) => setField('tag', v)}
-        options={[{ value: 'planned', label: '예정' }, { value: 'in_progress', label: '진행 중' }, { value: 'applied', label: '적용' }]} />
-      <Input label="항목명" value={form.name} onChange={(v) => setField('name', v)} placeholder="예: Loudness Normalization" />
+
+      <Input label="항목명 (표시 이름)" value={form.name} onChange={(v) => setField('name', v)} placeholder="예: [JTBC] 18자 줄바꿈" />
+      <Input label="함수명 (실제 함수)" value={form.function_name} onChange={(v) => setField('function_name', v)} mono placeholder="예: postprocess_over_length_lines" />
+      <Select label="함수 타입" value={form.func_type} onChange={(v) => setField('func_type', v)} options={FUNC_TYPE_OPTIONS} />
       <Input label="설명" value={form.desc} onChange={(v) => setField('desc', v)} textarea placeholder="항목에 대한 설명" />
 
       <div className="mb-4">
@@ -72,7 +139,7 @@ function TechItemFormModal({ open, onClose, initial, onSaved }) {
           {Object.entries(form.params).map(([k, v]) => (
             <div key={k} className="flex items-center gap-1 bg-slate-100 pl-2.5 pr-1 py-1 rounded-lg border border-slate-200">
               <span className="text-[10px] font-mono text-slate-500">{k}:</span>
-              <span className="text-[10px] font-mono font-bold text-indigo-600">{v}</span>
+              <span className="text-[10px] font-mono font-bold text-indigo-600">{String(v)}</span>
               <button onClick={() => removeParam(k)} className="p-0.5 text-slate-400 hover:text-red-500 ml-1"><X size={10} /></button>
             </div>
           ))}
@@ -101,48 +168,245 @@ function TechItemFormModal({ open, onClose, initial, onSaved }) {
   );
 }
 
+// ── Param chips ─────────────────────────────────────────────────
+
+function ParamChips({ params }) {
+  if (!params || Object.keys(params).length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {Object.entries(params).map(([k, v]) => (
+        <div key={k} className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+          <span className="text-[9px] font-mono text-slate-400">{k}</span>
+          <span className="text-[9px] font-mono font-bold text-indigo-600">{String(v)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── (탭1) Item Card ─────────────────────────────────────────────
+
+function ItemCard({ item, code, canEdit, onView, onEdit }) {
+  return (
+    <div className="group p-3 rounded-xl border border-slate-150 bg-white hover:border-slate-300 hover:shadow-sm transition-all">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <CodeBadge code={code} />
+            <span className="text-[13px] font-bold text-slate-800">{pureName(item.name)}</span>
+          </div>
+          {item.function_name && <p className="text-[11px] text-indigo-500 font-mono mt-0.5 truncate">{item.function_name}()</p>}
+          {item.desc && <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{item.desc}</p>}
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button onClick={() => onView(item)} className="p-1.5 text-slate-300 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors" title="코드 보기"><Code2 size={14} /></button>
+          {canEdit && <button onClick={() => onEdit(item)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors" title="수정"><Edit3 size={14} /></button>}
+        </div>
+      </div>
+      {item.func_type && <span className="inline-block mt-1.5 text-[9px] font-mono text-slate-400">{item.func_type}</span>}
+      <ParamChips params={item.params} />
+    </div>
+  );
+}
+
+function TypeBlock({ kind, items, codeOf, canEdit, onView, onEdit }) {
+  const isProc = kind === 'processing';
+  const Icon = isProc ? Wand2 : ShieldCheck;
+  return (
+    <div className={`rounded-2xl border bg-white overflow-hidden ${isProc ? 'border-emerald-100' : 'border-purple-100'}`}>
+      <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${isProc ? 'bg-emerald-50/60 border-emerald-100' : 'bg-purple-50/60 border-purple-100'}`}>
+        <Icon size={14} className={isProc ? 'text-emerald-600' : 'text-purple-600'} />
+        <span className={`text-xs font-bold ${isProc ? 'text-emerald-700' : 'text-purple-700'}`}>{isProc ? '후처리' : '검증'}</span>
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isProc ? 'bg-emerald-100 text-emerald-600' : 'bg-purple-100 text-purple-600'}`}>{items.length}</span>
+      </div>
+      <div className="p-3 space-y-2 max-h-[60vh] overflow-y-auto">
+        {items.length === 0 ? <p className="text-xs text-slate-300 text-center py-6">항목 없음</p>
+          : items.map((item) => <ItemCard key={item.id} item={item} code={codeOf(item)} canEdit={canEdit} onView={onView} onEdit={onEdit} />)}
+      </div>
+    </div>
+  );
+}
+
+function StageSection({ label, sub, accent, proc, valid, codeOf, canEdit, onView, onEdit, hideValidation }) {
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-sm" style={{ background: accent }}><Layers size={16} /></div>
+        <div>
+          <h3 className="text-base font-bold text-slate-800">{label}</h3>
+          <p className="text-[11px] text-slate-400">{sub}</p>
+        </div>
+      </div>
+      <div className={`grid grid-cols-1 gap-4 ${hideValidation ? '' : 'lg:grid-cols-2'}`}>
+        <TypeBlock kind="processing" items={proc} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
+        {!hideValidation && <TypeBlock kind="validation" items={valid} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />}
+      </div>
+    </div>
+  );
+}
+
+function FunctionsView({ items, codeOf, canEdit, onView, onEdit }) {
+  // 함수 목록 탭: function_name 기준 중복 제거 (칸별 첫 등장 = 기본 파라미터 대표)
+  const group = (stage, type) => {
+    const rows = items
+      .filter((i) => i.stage === stage && i.type === type)
+      .sort((a, b) => (a._idx ?? 0) - (b._idx ?? 0));
+    const seen = new Set();
+    const uniq = [];
+    for (const r of rows) {
+      const key = r.function_name || r.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      uniq.push(r);
+    }
+    return uniq.sort((a, b) => (a.scope !== b.scope ? (a.scope === 'common' ? -1 : 1) : (a.name || '').localeCompare(b.name || '')));
+  };
+  return (
+    <>
+      <StageSection label="1차 (Stage 1)" sub="모든 방송사 공통 — 정규화·기본 검증" accent="#2563eb"
+        proc={group('stage1', 'processing')} valid={group('stage1', 'validation')} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
+      <StageSection label="2차 (Stage 2)" sub="공통 + 방송사별 — 줄바꿈·오버랩·마침표 등" accent="#4f46e5"
+        proc={group('stage2', 'processing')} valid={group('stage2', 'validation')} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
+      <StageSection label="3차 (최종 납품)" sub="납품 직전 처리 — 배너 삽입·마침표 삭제 (방송사별)" accent="#0f766e"
+        proc={group('final', 'processing')} valid={[]} hideValidation codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
+    </>
+  );
+}
+
+// ── (탭2) 방송사별 파이프라인 ────────────────────────────────────
+
+function PipelineRow({ item, code, bcName, onView }) {
+  const isProc = item.type === 'processing';
+  const displayName = item.scope === 'common'
+    ? pureName(item.name)
+    : `[${bcName}] ${pureName(item.name)}`;
+  return (
+    <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-slate-150 bg-white hover:border-slate-300 transition-all">
+      <CodeBadge code={code} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[13px] font-bold text-slate-800">{displayName}</span>
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${item.scope === 'common' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{item.scope === 'common' ? '공통' : '전용'}</span>
+        </div>
+        {item.function_name && <p className="text-[11px] text-indigo-500 font-mono mt-0.5 truncate">{item.function_name}()</p>}
+        <ParamChips params={item.params} />
+      </div>
+      <button onClick={() => onView(item)} className="p-1.5 text-slate-300 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors shrink-0" title="코드 보기"><Code2 size={14} /></button>
+    </div>
+  );
+}
+
+function PipelineSection({ label, accent, items, codeOf, bcName, onView }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="mb-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-2 h-2 rounded-full" style={{ background: accent }} />
+        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide">{label}</h4>
+        <span className="text-[10px] font-bold text-slate-400">{items.length}</span>
+      </div>
+      <div className="space-y-1.5">
+        {items.map((item) => <PipelineRow key={item.id} item={item} code={codeOf(item)} bcName={bcName} onView={onView} />)}
+      </div>
+    </div>
+  );
+}
+
+function BroadcasterView({ items, broadcasters, codeOf, onView }) {
+  const [bc, setBc] = useState(null);
+  useEffect(() => { if (!bc && broadcasters.length) setBc(broadcasters[0]); }, [broadcasters]);
+
+  const pipe = useMemo(() => {
+    if (!bc) return null;
+    const low = BC_PREFIX[bc.code];
+    const belongs = (it) => it.scope === 'common' || it.id.split('_')[1] === low;
+    const mine = items.filter(belongs).slice().sort((a, b) => a._idx - b._idx);
+    const sec = (stage, type) => mine.filter((i) => i.stage === stage && i.type === type);
+    return {
+      s1p: sec('stage1', 'processing'), s1v: sec('stage1', 'validation'),
+      s2p: sec('stage2', 'processing'), s2v: sec('stage2', 'validation'),
+      fp: sec('final', 'processing'),
+    };
+  }, [bc, items]);
+
+  return (
+    <>
+      <div className="flex items-center gap-2 flex-wrap mb-6">
+        {broadcasters.map((b) => (
+          <button key={b.id} onClick={() => setBc(b)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${bc?.id === b.id ? 'text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+            style={bc?.id === b.id ? { background: b.color || '#6366f1' } : undefined}>
+            {b.name}
+          </button>
+        ))}
+      </div>
+
+      {pipe && (
+        <div className="bg-slate-50/60 rounded-2xl border border-slate-150 p-5">
+          <p className="text-[11px] text-slate-400 mb-4">
+            <span className="font-bold text-slate-600">{bc.name}</span> 자막 처리 순서 (config 기준). 각 함수 앞 코드는 분류별 고정 번호입니다 — 공통(C)·전용(S)·납품(F) × 후처리(P)·검증(V).
+          </p>
+          <PipelineSection label="1차 후처리" accent="#2563eb" items={pipe.s1p} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="1차 검증" accent="#2563eb" items={pipe.s1v} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="2차 후처리" accent="#4f46e5" items={pipe.s2p} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="2차 검증" accent="#4f46e5" items={pipe.s2v} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="최종 납품" accent="#0f766e" items={pipe.fp} codeOf={codeOf} bcName={bc.name} onView={onView} />
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Main Library Page ───────────────────────────────────────────
 
 export default function LibraryPage() {
   const { canEditTech } = useAuth();
   const [items, setItems] = useState([]);
-  const [filterType, setFilterType] = useState('all');
+  const [broadcasters, setBroadcasters] = useState([]);
+  const [view, setView] = useState('functions');
+  const [query, setQuery] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [codeViewItem, setCodeViewItem] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  const load = () => techItemApi.list().then(setItems);
+  const load = async () => {
+    const [tis, bs] = await Promise.all([techItemApi.list(), broadcasterApi.list()]);
+    setItems(tis.map((t, i) => ({ ...t, _idx: i })));
+    setBroadcasters(sortBroadcasters(bs));
+  };
   useEffect(() => { load(); }, []);
 
-  const filtered = useMemo(() => {
-    if (filterType === 'all') return items;
-    return items.filter((i) => i.type === filterType);
-  }, [items, filterType]);
+  const openEdit = (item) => { setEditTarget(item); setFormOpen(true); };
 
-  const filters = [
-    { k: 'all', l: '전체', c: '#1e293b' },
-    { k: 'processing', l: '후처리', c: '#059669' },
-    { k: 'validation', l: '검증', c: '#7c3aed' },
-  ];
+  // 함수 고정 번호 (전체 items 기준 — 검색과 무관하게 안정적)
+  const codeOf = useMemo(() => makeCodeOf(buildNumbering(items)), [items]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((i) =>
+      (i.name || '').toLowerCase().includes(q) ||
+      (i.function_name || '').toLowerCase().includes(q) ||
+      (i.desc || '').toLowerCase().includes(q)
+    );
+  }, [items, query]);
 
   return (
     <div className="p-8 lg:p-10">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">후처리 및 검증 항목 라이브러리</h2>
-          <p className="text-sm text-slate-400 mt-1">공통 및 특화 기술 항목을 관리합니다.</p>
+          <p className="text-sm text-slate-400 mt-1">함수 목록과 방송사별 처리 순서를 확인합니다. (개발팀)</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-            {filters.map((f) => (
-              <button key={f.k} onClick={() => setFilterType(f.k)}
-                className="px-4 py-2 text-[11px] font-bold rounded-lg transition-all"
-                style={filterType === f.k ? { background: f.c, color: 'white' } : { color: '#64748b' }}>
-                {f.l}
-              </button>
-            ))}
-          </div>
+          {view === 'functions' && (
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="항목·함수명 검색"
+                className="w-52 pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm" />
+            </div>
+          )}
           {canEditTech && (
             <Btn variant="accent" onClick={() => { setEditTarget(null); setFormOpen(true); }}>
               <Plus size={15} /> 항목 추가
@@ -151,101 +415,43 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      <Card>
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-400 text-[10px] font-bold tracking-wider uppercase">
-              <th className="px-5 py-4 w-20">분류</th>
-              <th className="px-5 py-4">항목명</th>
-              <th className="px-5 py-4">설명</th>
-              <th className="px-5 py-4">파라미터</th>
-              <th className="px-5 py-4 text-center">범위</th>
-              <th className="px-5 py-4 text-center">태그</th>
-              <th className="px-5 py-4 text-right w-24">관리</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100/80">
-            {filtered.map((item) => (
-              <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                <td className="px-5 py-5">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                    item.type === 'processing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-purple-50 text-purple-700 border-purple-200'
-                  }`}>
-                    {item.type === 'processing' ? '후처리' : '검증'}
-                  </span>
-                </td>
-                <td className="px-5 py-5 text-sm font-bold text-slate-800">{item.name}</td>
-                <td className="px-5 py-5 text-xs text-slate-500 max-w-[200px]">{item.desc}</td>
-                <td className="px-5 py-5">
-                  <div className="flex flex-wrap gap-1">
-                    {Object.entries(item.params || {}).map(([k, v]) => (
-                      <div key={k} className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                        <span className="text-[9px] font-mono text-slate-400 uppercase">{k}</span>
-                        <span className="text-[9px] font-mono font-bold text-indigo-600">{v}</span>
-                      </div>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-5 py-5 text-center">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
-                    item.scope === 'common' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-                  }`}>
-                    {item.scope}
-                  </span>
-                </td>
-                <td className="px-5 py-5 text-center"><Pill type={item.tag} kind="tag" /></td>
-                <td className="px-5 py-5 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <button onClick={() => setCodeViewItem(item)}
-                      className="p-1.5 text-slate-300 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors" title="코드 보기">
-                      <Code2 size={15} />
-                    </button>
-                    {canEditTech && (
-                      <button onClick={() => { setEditTarget(item); setFormOpen(true); }}
-                        className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors" title="수정">
-                        <Edit3 size={15} />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-
-      <div className="mt-6 flex items-center gap-3 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
-        <div className="p-2 bg-blue-600 text-white rounded-lg shadow-md shadow-blue-200"><Info size={14} /></div>
-        <p className="text-xs text-blue-800 font-medium">
-          라이브러리 항목은 <span className="font-black underline">'매핑 매트릭스'</span>에서 방송사 정책과 연결하여 실제 검증 엔진에 적용할 수 있습니다.
-        </p>
+      {/* 탭 */}
+      <div className="flex items-center gap-2 mb-6">
+        <button onClick={() => setView('functions')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${view === 'functions' ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
+          <LayoutGrid size={13} /> 함수 목록
+        </button>
+        <button onClick={() => setView('byBroadcaster')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${view === 'byBroadcaster' ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
+          <Building2 size={13} /> 방송사별
+        </button>
       </div>
+
+      {view === 'functions' ? (
+        <FunctionsView items={filtered} codeOf={codeOf} canEdit={canEditTech} onView={setCodeViewItem} onEdit={openEdit} />
+      ) : (
+        <BroadcasterView items={items} broadcasters={broadcasters} codeOf={codeOf} onView={setCodeViewItem} />
+      )}
 
       <TechItemFormModal open={formOpen} onClose={() => { setFormOpen(false); setEditTarget(null); }} initial={editTarget} onSaved={load} />
 
-      {/* Code Viewer Modal */}
       <Modal open={!!codeViewItem} onClose={() => { setCodeViewItem(null); setCopied(false); }} title={`${codeViewItem?.name || ''} — 소스코드`} wide>
         {codeViewItem && (
           <>
             <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CodeBadge code={codeOf(codeViewItem)} />
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
                   codeViewItem.type === 'processing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-purple-50 text-purple-700 border-purple-200'
-                }`}>
-                  {codeViewItem.type === 'processing' ? '후처리' : '검증'}
-                </span>
+                }`}>{codeViewItem.type === 'processing' ? '후처리' : '검증'}</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-500 border-slate-200 uppercase">{codeViewItem.stage}</span>
+                {codeViewItem.function_name && <span className="text-[11px] font-mono text-indigo-500">{codeViewItem.function_name}()</span>}
                 <span className="text-xs text-slate-500">{codeViewItem.desc}</span>
               </div>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(codeViewItem.source_code || '');
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-700 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                {copied ? <CheckIcon size={12} /> : <Copy size={12} />}
-                {copied ? '복사됨' : '복사'}
+                onClick={() => { navigator.clipboard.writeText(codeViewItem.source_code || ''); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-700 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
+                {copied ? <CheckIcon size={12} /> : <Copy size={12} />}{copied ? '복사됨' : '복사'}
               </button>
             </div>
             {codeViewItem.source_code ? (

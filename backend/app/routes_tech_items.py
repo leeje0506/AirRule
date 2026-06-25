@@ -28,6 +28,9 @@ def create_tech_item(body: TechItemCreate, db: Session = Depends(get_db), user: 
         id=gen_id(),
         type=body.type,
         name=body.name,
+        function_name=body.function_name,
+        func_type=body.func_type,
+        stage=body.stage,
         desc=body.desc,
         params=body.params,
         scope=body.scope,
@@ -47,7 +50,7 @@ def update_tech_item(item_id: str, body: TechItemUpdate, db: Session = Depends(g
         raise HTTPException(404, "Item not found")
 
     changes = []
-    for field in ["name", "desc", "params", "scope", "tag", "source_code"]:
+    for field in ["name", "function_name", "func_type", "stage", "desc", "params", "scope", "tag", "source_code"]:
         val = getattr(body, field)
         if val is not None:
             setattr(item, field, val)

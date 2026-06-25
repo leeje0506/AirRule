@@ -1,18 +1,183 @@
-"""
-초기 데이터 시드 스크립트.
-DB 테이블 생성 후 자동 실행됩니다.
-"""
+"""초기 데이터 시드 스크립트 (정책 매트릭스 구조)."""
 from sqlalchemy.orm import Session
-from app.models import User, Broadcaster, Policy, PolicyHistory, TechItem, Mapping, gen_id, utcnow
+from app.models import (
+    User, Broadcaster,
+    PolicyCategory, PolicyItem, PolicyValue, PolicyValueHistory,
+    TechItem, Mapping, ItemTechLink,
+    gen_id, utcnow,
+)
 from app.auth import hash_password
+
+try:
+    from app.seed_source_codes import SOURCE_CODES
+except ImportError:
+    SOURCE_CODES = {}
+
+
+# 방송사 코드 → id
+BC = {"JTBC": "b_jtbc", "LGHV": "b_lghv", "SKBB": "b_skbb",
+      "TVCS": "b_tvcs", "DLIV": "b_dliv", "TVING": "b_tvng"}
+
+
+# ── 엑셀 시트 → 정책 매트릭스 ──────────────────────────────────────
+#   구조: (카테고리, [ (항목명, 설명, { 방송사: (summary, detail) }) ])
+#   summary = 전체 탭용 짧은 값 (O / X / △ / 18글자 …)
+#   detail  = 방송사별 탭용 풀어쓴 전문 (없으면 빈 문자열)
+POLICY_MATRIX = [
+    ("싱크", [
+        ("일반", "영상 내 음성에 맞게 싱크 생성/조정 작업", {
+            "DLIV": ("O", "싱크 시작 지점을 정확하게 보정 (자막 시작이 음성보다 빠르지 않도록)"),
+            "LGHV": ("O", ""), "SKBB": ("O", ""), "JTBC": ("O", ""),
+            "TVCS": ("O", ""), "TVING": ("O", ""),
+        }),
+        ("오버랩", "영상 내 음성이 겹치는 경우 오버랩 작업", {
+            "DLIV": ("O", "오버랩 구간일 경우 병합(2번) 방식으로 진행"),
+            "LGHV": ("O", "대사(1줄)+대사(1줄)만 가능. 하이픈+띄어쓰기"),
+            "SKBB": ("X", ""),
+            "JTBC": ("O", "대사(1줄)+대사(1줄)만 가능. 3인 이상 시 우선순위 작업 후 나머지 버림"),
+            "TVCS": ("X", ""),
+            "TVING": ("O", "대사+대사 / 대사+음향 등 조합 가능"),
+        }),
+        ("배경음악", "배경음악 별도 표기", {
+            "DLIV": ("X", "배경음악 표기 없음"),
+            "LGHV": ("O", "[배경음악] 표기"),
+            "SKBB": ("X", ""), "JTBC": ("X", ""), "TVCS": ("X", ""),
+            "TVING": ("O", "[음악: '제목' OST] 또는 [ㅇㅇ한 음악] 표기. 제목은 티빙 제공 제목과 동일하게"),
+        }),
+        ("음향/효과음", "효과음 별도 표기", {
+            "DLIV": ("O", "(ㅇㅇ 소리) 표기, (노래 전주) 표기"),
+            "LGHV": ("O", "[ㅇㅇ 소리] 표기. 명확한 표현이 가능한 소리 (예: [휘파람 소리])"),
+            "SKBB": ("O", "[ㅇㅇ 소리], [노래 전주], [웃음소리], [울음소리]"),
+            "JTBC": ("X", ""), "TVCS": ("X", ""),
+            "TVING": ("O", "명확/불명확 소리 표기 규칙. 화면에 보이면 미기입. 배경음 지속 시 [-계속]"),
+        }),
+        ("OC 자막 (100% 동일)", "OC 자막과 음성이 100% 동일한 경우 텍스트 작업", {
+            "DLIV": ("X", "100% 동일한 경우 자막 생략"),
+            "LGHV": ("\u25B3", "동일한 텍스트 작업 진행 (조건부)"),
+            "SKBB": ("\u25B3", "동일한 텍스트 작업 진행 (조건부)"),
+            "JTBC": ("X", "해당 부분 자막 삭제"),
+            "TVCS": ("O", "동일한 텍스트 작업 진행"),
+            "TVING": ("X", "동일한 텍스트 작업 진행"),
+        }),
+        ("OC 자막 (의미 동일)", "OC 자막과 음성의 의미가 동일한 경우 텍스트 작업", {
+            "DLIV": ("O", ""), "LGHV": ("\u25B3", ""), "SKBB": ("\u25B3", ""),
+            "JTBC": ("", ""), "TVCS": ("", ""), "TVING": ("", ""),
+        }),
+    ]),
+    ("텍스트", [
+        ("공통", "들리는 음성 기준 텍스트 수정. 문장부호 규칙·추임새 생략", {
+            "DLIV": ("O", "마침표(.), 말줄임표(...), 물음표(?) 기입. 느낌표/물결/쉼표/인용 작은따옴표는 자제. 불필요한 추임새 생략 가능"),
+            "LGHV": ("O", ""), "SKBB": ("O", ""), "JTBC": ("O", ""),
+            "TVCS": ("O", ""), "TVING": ("O", ""),
+        }),
+        ("글자 수", "자막 한 줄당 최대 글자 수", {
+            "DLIV": ("17글자", ""), "LGHV": ("18글자", ""), "SKBB": ("20글자", ""),
+            "JTBC": ("18글자", ""), "TVCS": ("18글자", ""), "TVING": ("20글자", ""),
+        }),
+        ("줄 수", "자막당 최대 줄 수", {
+            "DLIV": ("3줄", ""), "LGHV": ("2줄", ""), "SKBB": ("1줄", ""),
+            "JTBC": ("2줄", ""), "TVCS": ("2줄", ""), "TVING": ("2줄", ""),
+        }),
+        ("노래 가사", "출연자가 실제 노래를 부르는 경우 별도 표기", {
+            "DLIV": ("O", "OC 자막 존재 시 삭제. 일반 대사와 동일하게 표기"),
+            "LGHV": ("O", "[노래 가사] 표기"),
+            "SKBB": ("O", "최초 1회만 앞에 '-[노래]' 표기"),
+            "JTBC": ("X", ""), "TVCS": ("X", ""),
+            "TVING": ("O", "\u266A 노래가사 \u266A 표기"),
+        }),
+        ("화자 구분", "발화자가 변경된 경우 별도 표기", {
+            "DLIV": ("O", "하이픈(-) 표기, 뒤 띄어쓰기 없음, 첫 발화부터. 예외) 해설: -(해설)V발화 / 3인 이상 동시발화: -(같이)V발화"),
+            "LGHV": ("X", ""),
+            "SKBB": ("O", "하이픈 표기 (띄어쓰기 X). 두 번째 발화자부터 기입"),
+            "JTBC": ("X", ""), "TVCS": ("X", ""), "TVING": ("X", ""),
+        }),
+        ("비하인드/예고편", "콘텐츠 메인 앞뒤로 추가된 영상의 텍스트 작업", {
+            "DLIV": ("O", "텍스트 작업과 동일하게 진행"),
+            "LGHV": ("X", "해당 부분 자막 삭제"),
+            "SKBB": ("O", "텍스트 작업과 동일하게 진행"),
+            "JTBC": ("X", "해당 부분 자막 삭제"), "TVCS": ("X", "해당 부분 자막 삭제"),
+            "TVING": ("O", "텍스트 작업과 동일하게 진행"),
+        }),
+        ("외국어 (문장)", "한국어가 아닌 외국어 문장의 텍스트 작업", {
+            "DLIV": ("X", "샘플 내 사례 없음 → LGHV/SKBB 동일 가이드 적용 (외국어 문장 삭제)"),
+            "LGHV": ("X", ""), "SKBB": ("X", ""), "JTBC": ("X", ""), "TVCS": ("X", ""),
+            "TVING": ("O", "[언어명]만 작성 (예: [영어])"),
+        }),
+        ("외국어 (단어 포함)", "한국어 대사 중 외국어 단어가 포함된 경우 텍스트 작업", {
+            "DLIV": ("O", "한국어 문장 내 영어단어·스펠링은 표기. 영어 문장은 별도 표기 안 함"),
+            "LGHV": ("O", ""), "SKBB": ("O", ""), "JTBC": ("O", ""),
+            "TVCS": ("O", ""), "TVING": ("O", ""),
+        }),
+        ("묵음 처리", "비속어/상표 등 가공된 효과음 별도 표기", {
+            "DLIV": ("X", "음절별 숫자 '0' 표기"),
+            "LGHV": ("X", ""),
+            "SKBB": ("O", "글자수 관계없이 2개의 별표(**) 표기"),
+            "JTBC": ("X", ""), "TVCS": ("X", ""),
+            "TVING": ("O", "삐 소리 음절마다 별표(*) 표기. 전체 문장 삐 처리는 [음소거 효과음]만 표기"),
+        }),
+    ]),
+    ("배리어 프리", [
+        ("화자 표기", "화면만으로 화자 식별 불가 시 화자 표기", {
+            "DLIV": ("X", ""), "LGHV": ("X", ""), "SKBB": ("X", ""),
+            "JTBC": ("X", ""), "TVCS": ("X", ""),
+            "TVING": ("O", "텍스트 맨 앞에 (화자)+띄어쓰기 표기"),
+        }),
+        ("효과음 (편집 삽입)", "편집 시 삽입한 인위적 소리 별도 표기", {
+            "DLIV": ("X", ""), "LGHV": ("X", ""), "SKBB": ("X", ""),
+            "JTBC": ("X", ""), "TVCS": ("X", ""),
+            "TVING": ("O", "[OO 효과음] 표기"),
+        }),
+        ("자막 위치", "OC 자막을 가리지 않게 자막 위치 변경", {
+            "DLIV": ("X", ""), "LGHV": ("X", ""), "SKBB": ("X", ""),
+            "JTBC": ("X", ""), "TVCS": ("X", ""), "TVING": ("X", ""),
+        }),
+    ]),
+    ("수급 / 납품", [
+        ("자막 형식", "최종 납품 자막의 파일 형식", {
+            "DLIV": ("srt", ""), "LGHV": ("srt", ""), "SKBB": ("smi", ""),
+            "JTBC": ("srt", ""), "TVCS": ("vtt", ""), "TVING": ("vtt", ""),
+        }),
+        ("마침표 삭제", "최종 납품 자막의 마침표 삭제 여부", {
+            "DLIV": ("X", ""), "LGHV": ("O", ""), "SKBB": ("X", ""),
+            "JTBC": ("O", ""), "TVCS": ("X", ""), "TVING": ("O", ""),
+        }),
+        ("수급 방식", "영상 파일 전달 방식", {
+            "DLIV": ("구글 드라이브", "세팅 후 전달 예정"),
+            "LGHV": ("구글 드라이브", ""), "SKBB": ("구글 드라이브", ""),
+            "JTBC": ("", ""), "TVCS": ("", ""), "TVING": ("", ""),
+        }),
+        ("납품 방식", "자막 파일 전달 방식", {
+            "DLIV": ("구글 드라이브", "세팅 후 전달 예정"),
+            "LGHV": ("자체 프로그램", ""), "SKBB": ("이메일", ""),
+            "JTBC": ("", ""), "TVCS": ("", ""), "TVING": ("", ""),
+        }),
+    ]),
+]
+
+
+# ── 정책 항목 ↔ 기술 항목 연결 (3번 페이지용) ──────────────────────
+#   (정책 항목명, [기술항목 id …], 연결 설명)
+ITEM_TECH_LINKS = [
+    ("글자 수", ["s2c_vl_len", "s2_jtbc_pol", "s2_lghv_pol"], "줄별 길이 검증 및 글자수 초과 줄바꿈"),
+    ("줄 수", ["s2c_vl_lnc"], "자막 줄 수 검증"),
+    ("오버랩", ["s2_jtbc_vov", "s2_lghv_vov", "s2_skbb_vov", "s2_lghv_vot",
+              "s2_skbb_vso", "s2_dliv_val", "s2_jtbc_pms", "s2_lghv_pms", "s2_dliv_pms"],
+     "오버랩 줄수/존재 검증 및 다화자 병합 처리"),
+    ("화자 구분", ["s2_skbb_vhy", "s2_dliv_vhy", "s2_skbb_pfh", "s2_skbb_psh", "s2_dliv_psh"],
+     "하이픈 화자 표기 검증/처리"),
+    ("노래 가사", ["s2_lghv_pmn", "s2_lghv_pkb", "s2_tvng_pmn"], "음표 표기 정규화"),
+    ("음향/효과음", ["s2_lghv_pmn", "s2_tvng_pmn"], "음향/음표 표기 관련"),
+    ("묵음 처리", ["s2_skbb_pas", "s2_skbb_vmo", "s2_skbb_pnp"], "별표/모자이크 처리·검증"),
+    ("공통", ["s1_pp_wrp", "s1_pp_ell", "s1_vl_elip", "s2c_pp_asp"], "문장부호 정규화·검증"),
+    ("외국어 (문장)", ["s2_skbb_vsc", "s1_vl_spec"], "특수문자/외국어 문자 검증"),
+]
 
 
 def seed(db: Session):
-    # Skip if already seeded
     if db.query(User).first():
         return
 
-    # ── Users ──
+    # ── Users ── (기존 그대로)
     users = [
         User(id="u_admin", username="admin", hashed_password=hash_password("admin123"), name="관리자", role="admin"),
         User(id="u_dev1", username="dev1", hashed_password=hash_password("dev123"), name="개발팀 김철수", role="dev"),
@@ -20,239 +185,83 @@ def seed(db: Session):
     ]
     db.add_all(users)
 
-    # ── Broadcasters ──
+    # ── Broadcasters ── (기존 그대로)
     broadcasters = [
-        Broadcaster(id="b_jtbc", code="jtbc", name="JTBC", color="#db2777"),
-        Broadcaster(id="b_lgh", code="lgh", name="LG Hello", color="#dc2626"),
-        Broadcaster(id="b_skb", code="skb", name="SK Btv", color="#f97316"),
-        Broadcaster(id="b_csdi", code="csdi", name="CSDI", color="#3b82f6"),
-        Broadcaster(id="b_tving", code="tving", name="TVING", color="#b91c1c"),
+        Broadcaster(id="b_jtbc", code="JTBC", name="JTBC", color="#db2777"),
+        Broadcaster(id="b_lghv", code="LGHV", name="LGHV", color="#dc2626"),
+        Broadcaster(id="b_skbb", code="SKBB", name="SKBB", color="#f97316"),
+        Broadcaster(id="b_tvcs", code="TVCS", name="TVCS", color="#8b5cf6"),
+        Broadcaster(id="b_dliv", code="DLIV", name="DLIV", color="#3b82f6"),
+        Broadcaster(id="b_tvng", code="TVNG", name="TVING", color="#b91c1c"),
     ]
     db.add_all(broadcasters)
 
-    # ── Policies ──
-    policies = [
-        Policy(
-            id="pol_1", broadcaster_id="b_jtbc",
-            title="JTBC 예능 제작 가이드라인", version="v2.4", status="active",
-            rules={
-                "specs": "18글자 / 2줄",
-                "sync": "미탐지 대사 빈 싱크 추가. 반복 편집 시 횟수만큼 모두 작업.",
-                "overlap": "3인 이상 오버랩 시 우선순위(중요도/화면노출) 작업 후 나머지 버림.",
-                "lyrics": "대사 표기와 동일 방식 (OC 존재 시 삭제)",
-                "foreign": "간단한 단어 한글 전사(버스, 티비). 문장 단위 외국어 삭제.",
-                "sound": "배경음악 [배경음악] 표기. 음향/효과음 작업 없음.",
-                "oc_delete": "음성과 동일한 OC 존재 시 삭제 (내용 일치 시)",
-                "speaker": "화자 구분 작업 없음.",
-                "punctuation": "문장구조 끝 마침표 필수. 단위기호는 한글 발음 표기(㎡ -> 제곱미터).",
-            },
-            created_by="u_sub1",
-        ),
-        Policy(
-            id="pol_2", broadcaster_id="b_tving",
-            title="TVING 오리지널 콘텐츠 규격", version="v3.1", status="active",
-            rules={
-                "specs": "17글자 / 3줄 (최대)",
-                "sync": "시작 지점 정확하게 보정. 가독성 문제 시만 종료 지점 보정. 불필요 추임새 생략.",
-                "overlap": "모든 자막 줄 수의 합이 3줄까지 가능. 중요한 발화 우선.",
-                "lyrics": "♪ 노래가사 ♪ 표기",
-                "foreign": "[언어명]만 작성 (예: [영어], [일어])",
-                "sound": "화면만으로 알 수 없는 성대 발화 소리 [웃음소리] 등 표기. 지속 시 [-계속] 추가.",
-                "oc_delete": "95% 동일 시 삭제. 예능 자막 스타일은 삭제 안 함.",
-                "speaker": "동일OC 존재로 삭제 시 이어지는 자막 무조건 화자 표기.",
-                "punctuation": "문장 끝 마침표(.) 필수. 느낌표/물결 사용 자제.",
-            },
-            created_by="u_sub1",
-        ),
-        Policy(
-            id="pol_3", broadcaster_id="b_skb",
-            title="Btv 영화 자막 송출 표준", version="v1.8", status="review",
-            rules={
-                "specs": "20글자 / 1줄",
-                "sync": "싱크 길이 짧아서 읽기 불편하지 않도록 주의. 한국제작원 기준 준수.",
-                "overlap": "대사(1줄)+대사(1줄)만 가능. 하이픈(-) 사용.",
-                "lyrics": "최초 1회 앞에 -[노래] 표기.",
-                "foreign": "OC자막 한국어 존재 시 그대로 작성. 외국어만 존재 시 삭제.",
-                "sound": "맥락상 꼭 필요하며 화면 식별 불가 시만 [OO 소리] 표기.",
-                "oc_delete": "음성과 동일 OC 존재 시 삭제 진행.",
-                "speaker": "-(해설), -(같이) 등 하이픈 활용 표기.",
-                "punctuation": "말줄임표(...), 물음표(?), 쉼표(,) 가능.",
-            },
-            created_by="u_sub1",
-        ),
-        Policy(id="pol_4", broadcaster_id="b_lgh", title="지역 채널 뉴스 자막 규정", version="v2.0", status="active", rules={}, created_by="u_sub1"),
-        Policy(id="pol_5", broadcaster_id="b_csdi", title="CSDI 다큐멘터리 제작 규정", version="v0.9", status="draft", rules={}, created_by="u_sub1"),
-    ]
-    db.add_all(policies)
+    # ── Policy Matrix (NEW) ──
+    item_lookup = {}          # 항목명 → PolicyItem
+    value_lookup = {}         # (항목명, 방송사코드) → PolicyValue
+    for ci, (cat_name, items) in enumerate(POLICY_MATRIX):
+        cat = PolicyCategory(id=gen_id(), name=cat_name, sort_order=ci)
+        db.add(cat)
+        db.flush()
+        for ii, (item_name, desc, vals) in enumerate(items):
+            item = PolicyItem(id=gen_id(), category_id=cat.id, name=item_name, description=desc, sort_order=ii)
+            db.add(item)
+            db.flush()
+            item_lookup[item_name] = item
+            for code, (summary, detail) in vals.items():
+                pv = PolicyValue(id=gen_id(), item_id=item.id, broadcaster_id=BC[code], summary=summary, detail=detail)
+                db.add(pv)
+                value_lookup[(item_name, code)] = pv
+    db.flush()
 
-    # ── Policy History ──
-    db.add_all([
-        PolicyHistory(id=gen_id(), policy_id="pol_1", edited_by="u_sub1", summary="싱크 작업 규칙 수정: 반복 편집 시 횟수만큼 모두 작업 추가"),
-        PolicyHistory(id=gen_id(), policy_id="pol_1", edited_by="u_sub1", summary="기본 규격 18글자로 변경"),
-        PolicyHistory(id=gen_id(), policy_id="pol_2", edited_by="u_sub1", summary="오버랩 규칙 세분화"),
-    ])
+    # 변경 이력 데모 (전/후 값 보존)
+    demo = value_lookup.get(("글자 수", "DLIV"))
+    if demo:
+        db.add(PolicyValueHistory(id=gen_id(), value_id=demo.id, edited_by="u_sub1",
+                                  old_summary="18글자", new_summary="17글자", note="DLIV 규격 변경 반영"))
+    demo2 = value_lookup.get(("오버랩", "DLIV"))
+    if demo2:
+        db.add(PolicyValueHistory(id=gen_id(), value_id=demo2.id, edited_by="u_sub1",
+                                  old_summary="X", new_summary="O", note="오버랩 작업 규칙 추가"))
 
-    # ── Tech Items ──
-    tech_items = [
-        TechItem(id="ti_p1", type="processing", name="Loudness Normalization", desc="오디오 신호의 평균 라우드니스를 표준 규격에 맞게 조정합니다.", params={"target": "-24 LKFS", "peak": "-1 dBTP", "mode": "True Peak"}, scope="common", tag="applied",
-            source_code='''import numpy as np
-
-def loudness_normalize(audio_data, target_lkfs=-24, peak_limit=-1):
-    """오디오 라우드니스 정규화 처리"""
-    current_loudness = measure_lkfs(audio_data)
-    gain_db = target_lkfs - current_loudness
-    normalized = apply_gain(audio_data, gain_db)
-    
-    # True Peak 리미팅
-    peak = np.max(np.abs(normalized))
-    if 20 * np.log10(peak) > peak_limit:
-        normalized = true_peak_limit(normalized, peak_limit)
-    
-    return normalized, {
-        "original_lkfs": current_loudness,
-        "adjusted_lkfs": target_lkfs,
-        "gain_applied": gain_db,
-        "peak_limited": peak > 10 ** (peak_limit / 20)
-    }
-'''),
-        TechItem(id="ti_p2", type="processing", name="AI UHD Upscaling", desc="FHD 소스를 UHD 해상도로 정밀 업스케일링합니다.", params={"model": "v4-high-fidelity", "sharpness": "0.4", "denoise": "true"}, scope="specific", tag="applied",
-            source_code='''import torch
-from models.upscaler import UHDUpscaler
-
-def upscale_to_uhd(frame, model_name="v4-high-fidelity", sharpness=0.4, denoise=True):
-    """FHD 프레임을 UHD로 업스케일링"""
-    model = UHDUpscaler.load(model_name)
-    
-    if denoise:
-        frame = apply_denoise(frame, strength=0.3)
-    
-    upscaled = model.predict(frame)
-    
-    if sharpness > 0:
-        upscaled = unsharp_mask(upscaled, amount=sharpness)
-    
-    return upscaled
-'''),
-        TechItem(id="ti_p3", type="processing", name="Frame Rate Conversion", desc="영상 프레임을 타겟 송출 규격에 맞게 보간합니다.", params={"target_fps": "29.97", "method": "optical_flow"}, scope="common", tag="in_progress",
-            source_code='''from video_utils import optical_flow_interpolate
-
-def convert_frame_rate(video_stream, target_fps=29.97, method="optical_flow"):
-    """프레임 레이트 변환"""
-    src_fps = video_stream.fps
-    
-    if abs(src_fps - target_fps) < 0.01:
-        return video_stream  # 변환 불필요
-    
-    if method == "optical_flow":
-        result = optical_flow_interpolate(video_stream, target_fps)
-    elif method == "blend":
-        result = frame_blend(video_stream, target_fps)
-    else:
-        result = nearest_frame(video_stream, target_fps)
-    
-    return result
-'''),
-        TechItem(id="ti_v1", type="validation", name="Char Limit Validator", desc="방송사별 설정된 글자 수 및 줄 수 제한 위반을 실시간 검출합니다.", params={"mode": "strict", "ignore_space": "false"}, scope="common", tag="applied",
-            source_code='''import re
-
-def validate_char_limit(srt_entries, max_chars=18, max_lines=2, mode="strict", ignore_space=False):
-    """자막 글자 수 / 줄 수 제한 검증"""
-    errors = []
-    
-    for entry in srt_entries:
-        lines = entry["text"].split("\\n")
-        
-        # 줄 수 체크
-        if len(lines) > max_lines:
-            errors.append({
-                "index": entry["index"],
-                "type": "LINE_OVERFLOW",
-                "message": f"줄 수 초과: {len(lines)}줄 (최대 {max_lines}줄)",
-                "severity": "error",
-                "timecode": entry["timecode"]
-            })
-        
-        # 글자 수 체크
-        for i, line in enumerate(lines):
-            text = line if not ignore_space else line.replace(" ", "")
-            if len(text) > max_chars:
-                errors.append({
-                    "index": entry["index"],
-                    "type": "CHAR_OVERFLOW",
-                    "message": f"글자 수 초과: {len(text)}자 (최대 {max_chars}자) - Line {i+1}",
-                    "severity": "error" if mode == "strict" else "warning",
-                    "timecode": entry["timecode"],
-                    "line": i + 1,
-                    "text": text
-                })
-    
-    return {
-        "passed": len(errors) == 0,
-        "total_entries": len(srt_entries),
-        "error_count": len(errors),
-        "errors": errors
-    }
-'''),
-        TechItem(id="ti_v2", type="validation", name="Gamut Error Check", desc="Rec.709/2020 색역을 벗어나는 픽셀을 검출합니다.", params={"standard": "Rec.709", "threshold": "5%"}, scope="common", tag="applied",
-            source_code='''import numpy as np
-from colorspace import check_gamut
-
-def validate_gamut(frame_data, standard="Rec.709", threshold=0.05):
-    """색역 범위 검증"""
-    out_of_gamut = check_gamut(frame_data, standard)
-    ratio = np.sum(out_of_gamut) / frame_data.size
-    
-    return {
-        "passed": ratio <= threshold,
-        "out_of_gamut_ratio": f"{ratio*100:.2f}%",
-        "threshold": f"{threshold*100:.1f}%",
-        "standard": standard,
-        "pixel_count": int(np.sum(out_of_gamut))
-    }
-'''),
-        TechItem(id="ti_v3", type="validation", name="OC Similarity Scan", desc="영상 내 원본 자막(OC)과 전사 텍스트의 일치율을 분석합니다.", params={"min_match": "95%", "engine": "OCR-v3"}, scope="specific", tag="planned",
-            source_code='''from ocr_engine import extract_text_from_frame
-from difflib import SequenceMatcher
-
-def scan_oc_similarity(srt_entries, video_frames, min_match=0.95, engine="OCR-v3"):
-    """OC 자막과 전사 텍스트 유사도 분석"""
-    results = []
-    
-    for entry in srt_entries:
-        frame = get_frame_at(video_frames, entry["start_time"])
-        oc_text = extract_text_from_frame(frame, engine=engine)
-        
-        if oc_text:
-            similarity = SequenceMatcher(None, entry["text"], oc_text).ratio()
-            results.append({
-                "index": entry["index"],
-                "srt_text": entry["text"],
-                "oc_text": oc_text,
-                "similarity": f"{similarity*100:.1f}%",
-                "should_delete": similarity >= min_match,
-                "timecode": entry["timecode"]
-            })
-    
-    return {
-        "total_compared": len(results),
-        "delete_candidates": sum(1 for r in results if r["should_delete"]),
-        "results": results
-    }
-'''),
-    ]
+    # ── Tech Items ── (기존 그대로)
+    from app.seed_tech_items import get_tech_items
+    tech_items = get_tech_items()
+    for ti in tech_items:
+        code = SOURCE_CODES.get(ti.function_name, "")
+        if code:
+            ti.source_code = code
     db.add_all(tech_items)
+    db.flush()
 
-    # ── Mappings ──
-    mapping_data = {
-        "b_jtbc": ["ti_p1", "ti_p3", "ti_v1", "ti_v2"],
-        "b_tving": ["ti_p1", "ti_p2", "ti_p3", "ti_v1", "ti_v2", "ti_v3"],
-        "b_skb": ["ti_p1", "ti_p3", "ti_v1", "ti_v2"],
-        "b_lgh": ["ti_p1", "ti_v1"],
-        "b_csdi": ["ti_p1", "ti_p3", "ti_v1", "ti_v2"],
-    }
-    for b_id, item_ids in mapping_data.items():
-        for item_id in item_ids:
-            db.add(Mapping(id=gen_id(), broadcaster_id=b_id, item_id=item_id))
+    # ── Mappings ── (기존 그대로)
+    stage1_ids = [ti.id for ti in tech_items if ti.stage == "stage1"]
+    s2c_ids = [ti.id for ti in tech_items if ti.stage == "stage2" and ti.scope == "common"]
+    s2s = {}
+    for ti in tech_items:
+        if ti.stage == "stage2" and ti.scope == "specific":
+            parts = ti.id.split("_")
+            if len(parts) >= 2:
+                s2s.setdefault(parts[1], []).append(ti.id)
+
+    bmap = {"b_jtbc": "jtbc", "b_lghv": "lghv", "b_skbb": "skbb", "b_tvcs": "tvcs", "b_dliv": "dliv", "b_tvng": "tvng"}
+    for b in broadcasters:
+        ids = list(stage1_ids) + list(s2c_ids) + s2s.get(bmap.get(b.id, ""), [])
+        seen = set()
+        for iid in ids:
+            if iid not in seen:
+                seen.add(iid)
+                db.add(Mapping(id=gen_id(), broadcaster_id=b.id, item_id=iid))
+
+    # ── Item ↔ Tech links (NEW) ──
+    tech_ids = {ti.id for ti in tech_items}
+    for item_name, tids, note in ITEM_TECH_LINKS:
+        item = item_lookup.get(item_name)
+        if not item:
+            continue
+        for tid in tids:
+            if tid in tech_ids:
+                db.add(ItemTechLink(id=gen_id(), policy_item_id=item.id, tech_item_id=tid, note=note))
 
     db.commit()
     print("✅ Seed data inserted successfully")

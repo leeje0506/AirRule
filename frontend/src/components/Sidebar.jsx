@@ -3,9 +3,9 @@ import { LayoutGrid, Layers, GitBranch, History, Settings, LogOut, FlaskConical 
 import { useAuth } from '../context/AuthContext';
 
 const NAV = [
-  { path: '/policies',  label: '방송사 정책',     icon: LayoutGrid,   desc: '채널별 정책 아카이브' },
-  { path: '/library',   label: '마스터 라이브러리', icon: Layers,       desc: '후처리/검증 항목 관리' },
-  { path: '/mapping',   label: '매핑 매트릭스',    icon: GitBranch,    desc: '정책-기술 연결 대시보드' },
+  { path: '/policies',  label: '방송사 정책',     icon: LayoutGrid,   desc: '방송사별 정책 매트릭스' },
+  { path: '/library',   label: '마스터 라이브러리', icon: Layers,       desc: '후처리/검증 함수 관리' },
+  { path: '/mapping',   label: '연결 찾기',       icon: GitBranch,    desc: '정책 ↔ 기술 연결' },
   { path: '/test',      label: '테스트',          icon: FlaskConical, desc: 'SRT 파이프라인 테스트' },
   { path: '/history',   label: '수정내역',         icon: History,      desc: '전체 변경 이력' },
 ];

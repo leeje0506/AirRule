@@ -223,7 +223,7 @@ function StepResultCard({ step, onViewCode }) {
 
 function AvailableRow({ item, added, onAdd, onViewCode }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-150 bg-white hover:border-indigo-200 transition-colors">
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200/70 bg-white hover:border-indigo-300 hover:bg-slate-50 transition-colors">
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-bold text-slate-700 truncate">{item.name}</p>
         {item.function_name && <p className="text-[10px] text-indigo-400 font-mono truncate">{item.function_name}()</p>}
@@ -241,7 +241,7 @@ function AvailableRow({ item, added, onAdd, onViewCode }) {
 
 function PipelineItem({ item, index, total, onMoveUp, onMoveDown, onRemove, onViewCode }) {
   return (
-    <div className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-slate-200 group hover:border-indigo-200 transition-colors">
+    <div className="flex items-center gap-2 p-2.5 bg-white rounded-lg border border-slate-200/70 group hover:border-indigo-300 transition-colors">
       <div className="text-slate-300"><GripVertical size={14} /></div>
       <div className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-black shrink-0">{index + 1}</div>
       <div className="flex-1 min-w-0">
@@ -374,9 +374,10 @@ export default function TestPage() {
   };
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="p-6 lg:p-8 h-full">
+      <div className="flex h-full overflow-hidden bg-white rounded-xl border border-slate-200/70 shadow-sm">
       {/* Left: config */}
-      <div className="w-[480px] bg-white border-r border-slate-200 flex flex-col shrink-0">
+      <div className="w-[480px] bg-white border-r border-slate-200/70 flex flex-col shrink-0 rounded-l-xl">
         <div className="p-5 border-b border-slate-100">
           <h3 className="text-lg font-bold text-slate-800">테스트 파이프라인</h3>
           <p className="text-xs text-slate-400 mt-1">요청 전 미리 돌려보세요. 후처리는 텍스트가 바뀌고, 검증은 걸리면 재작업 대상으로 표시됩니다.</p>
@@ -456,7 +457,7 @@ export default function TestPage() {
 
         <div className="p-5 border-t border-slate-100">
           <button onClick={handleRun} disabled={!srtText.trim() || pipeline.length === 0 || running}
-            className="w-full py-3.5 bg-indigo-600 text-white font-bold text-sm rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-indigo-200/50 flex items-center justify-center gap-2">
+            className="w-full py-3.5 bg-indigo-600 text-white font-bold text-sm rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-40 disabled:pointer-events-none shadow-sm shadow-indigo-200/60 flex items-center justify-center gap-2">
             {running ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
             {running ? '실행 중...' : '파이프라인 실행'}
           </button>
@@ -464,8 +465,8 @@ export default function TestPage() {
       </div>
 
       {/* Right: results */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
-        <div className="p-8 border-b border-slate-200 bg-white">
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-50/50 rounded-r-xl overflow-hidden">
+        <div className="p-6 border-b border-slate-200/70 bg-white">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold text-slate-800">테스트 결과</h3>
@@ -485,7 +486,7 @@ export default function TestPage() {
         <div className="flex-1 overflow-y-auto p-8">
           {!result && !running && (
             <div className="flex flex-col items-center justify-center h-full text-slate-300">
-              <div className="w-20 h-20 rounded-3xl bg-slate-100 flex items-center justify-center mb-4"><Play size={32} className="text-slate-300 ml-1" /></div>
+              <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-4"><Play size={32} className="text-slate-300 ml-1" /></div>
               <p className="text-sm font-medium text-slate-400">SRT를 입력하고 파이프라인을 실행하세요</p>
             </div>
           )}
@@ -503,7 +504,7 @@ export default function TestPage() {
           )}
           {result && !running && !result.error && (
             <div className="space-y-4">
-              <div className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200/70">
                 <div className="flex items-center gap-6 text-xs">
                   <div className="flex items-center gap-2"><span className="text-slate-400">엔트리</span><span className="font-bold text-slate-800">{result.srt_entry_count}개</span></div>
                   <div className="h-4 w-px bg-slate-200" />
@@ -532,6 +533,7 @@ export default function TestPage() {
       </div>
 
       <CodeViewerModal open={!!codeViewItem} onClose={() => setCodeViewItem(null)} item={codeViewItem} />
+      </div>
     </div>
   );
 }

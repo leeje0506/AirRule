@@ -10,7 +10,9 @@ export default function AppLayout() {
         <Header />
         <main className="flex-1 overflow-hidden">
           <div className="h-full overflow-y-auto">
-            <Outlet />
+            <div className="max-w-screen-xl mx-auto w-full">
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>

@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Save, Pencil, History, Info, LayoutGrid } from 'lucide-react';
+import { Save, Pencil, Info, LayoutGrid } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { policyApi, broadcasterApi } from '../api/client';
-import { Card, Btn, Modal } from '../components/ui';
+import { Btn, Modal } from '../components/ui';
 
 // 방송사 표시 순서 (code 기준)
 const BC_ORDER = ['JTBC', 'LGHV', 'SKBB', 'TVCS', 'DLIV', 'TVNG'];
@@ -123,43 +123,44 @@ function CellEditModal({ open, onClose, item, broadcaster, value, onSaved }) {
 
 function MatrixView({ categories, broadcasters, canEdit, onCellClick }) {
   return (
-    <Card>
+    <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse min-w-[720px]">
-          <thead>
-            <tr className="bg-slate-50/80 border-b border-slate-100">
-              <th className="sticky left-0 bg-slate-50/80 px-5 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400 min-w-[200px]">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-white border-b border-slate-200">
+              <th className="sticky left-0 bg-white px-4 py-2.5 text-[10px] font-bold tracking-wider uppercase text-slate-400 min-w-[220px]">
                 항목
               </th>
               {broadcasters.map((b) => (
-                <th key={b.id} className="px-3 py-4 text-center">
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[9px] font-black"
+                <th key={b.id} className="px-2 py-2.5 text-center">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span className="w-4 h-4 rounded flex items-center justify-center text-white text-[8px] font-black shrink-0"
                       style={{ background: b.color || '#6366f1' }}>
                       {b.name[0]}
                     </span>
-                    <span className="text-[10px] font-bold text-slate-500">{b.name}</span>
+                    <span className="text-[11px] font-bold text-slate-600">{b.name}</span>
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100/80">
+          <tbody>
             {categories.map((cat) => (
               <CategoryRows key={cat.id} cat={cat} broadcasters={broadcasters} canEdit={canEdit} onCellClick={onCellClick} />
             ))}
           </tbody>
         </table>
       </div>
-    </Card>
+    </div>
   );
 }
 
 function CategoryRows({ cat, broadcasters, canEdit, onCellClick }) {
   return (
     <>
-      <tr className="bg-slate-100/60">
-        <td colSpan={broadcasters.length + 1} className="sticky left-0 px-5 py-2 text-[11px] font-bold text-slate-500">
+      <tr>
+        <td colSpan={broadcasters.length + 1}
+          className="sticky left-0 bg-slate-50 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-y border-slate-100">
           {cat.name}
         </td>
       </tr>
@@ -167,11 +168,13 @@ function CategoryRows({ cat, broadcasters, canEdit, onCellClick }) {
         const byBc = {};
         (item.values || []).forEach((v) => { byBc[v.broadcaster_id] = v; });
         return (
-          <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-            <td className="sticky left-0 bg-white px-5 py-3">
-              <p className="text-[13px] font-bold text-slate-700">{item.name}</p>
+          <tr key={item.id} className="border-b border-slate-100/70 hover:bg-slate-50/60 transition-colors">
+            <td className="sticky left-0 bg-white px-4 py-2 align-middle">
+              <span className="text-[13px] font-medium text-slate-700">{item.name}</span>
               {item.description && (
-                <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{item.description}</p>
+                <span className="block text-[10px] text-slate-400 leading-snug truncate max-w-[200px]" title={item.description}>
+                  {item.description}
+                </span>
               )}
             </td>
             {broadcasters.map((b) => {
@@ -179,11 +182,11 @@ function CategoryRows({ cat, broadcasters, canEdit, onCellClick }) {
               const st = cellStyle(v?.summary);
               const hasDetail = !!(v && v.detail);
               return (
-                <td key={b.id} className="px-3 py-3 text-center">
+                <td key={b.id} className="px-2 py-1 text-center">
                   <button
                     onClick={() => canEdit && onCellClick(item, b, v)}
                     title={hasDetail ? v.detail : ''}
-                    className={`inline-flex items-center justify-center min-w-[40px] px-2 py-1 rounded-lg text-xs ${st.cls} ${canEdit ? 'hover:bg-indigo-50 cursor-pointer' : 'cursor-default'} ${hasDetail ? 'underline decoration-dotted decoration-slate-300 underline-offset-4' : ''}`}
+                    className={`inline-flex items-center justify-center min-w-[34px] px-1.5 py-1 rounded-md text-[13px] ${st.cls} ${canEdit ? 'hover:bg-indigo-50 cursor-pointer' : 'cursor-default'} ${hasDetail ? 'underline decoration-dotted decoration-slate-300 underline-offset-4' : ''}`}
                   >
                     {st.text}
                   </button>
@@ -201,38 +204,41 @@ function CategoryRows({ cat, broadcasters, canEdit, onCellClick }) {
 
 function DetailView({ categories, broadcaster, canEdit, onCellClick }) {
   return (
-    <div className="space-y-6">
+    <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden">
       {categories.map((cat) => (
         <div key={cat.id}>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">{cat.name}</p>
-          <Card>
-            <div className="divide-y divide-slate-100">
-              {cat.items.map((item) => {
-                const v = (item.values || []).find((x) => x.broadcaster_id === broadcaster.id);
-                const st = cellStyle(v?.summary);
-                return (
-                  <div key={item.id} className="flex items-start gap-4 px-5 py-4 group">
-                    <div className="w-32 shrink-0">
-                      <p className="text-[13px] font-bold text-slate-700">{item.name}</p>
-                      <span className={`inline-block mt-1 text-xs ${st.cls}`}>{st.text}</span>
-                    </div>
-                    <p className="flex-1 text-[13px] text-slate-600 leading-relaxed">
-                      {v?.detail || (item.description ? <span className="text-slate-400">{item.description}</span> : <span className="text-slate-300">—</span>)}
-                    </p>
-                    {canEdit && (
-                      <button
-                        onClick={() => onCellClick(item, broadcaster, v)}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-all shrink-0"
-                        title="수정"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
+          <div className="bg-slate-50 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-y border-slate-100">
+            {cat.name}
+          </div>
+          {cat.items.map((item) => {
+            const v = (item.values || []).find((x) => x.broadcaster_id === broadcaster.id);
+            const st = cellStyle(v?.summary);
+            const isMarker = ['O', 'X', '△', '·'].includes(st.text);
+            return (
+              <div key={item.id} className="flex items-center gap-4 px-4 py-2 border-b border-slate-100/70 hover:bg-slate-50/60 transition-colors group">
+                <div className="w-56 shrink-0 flex items-center gap-2.5">
+                  {isMarker ? (
+                    <span className={`inline-flex items-center justify-center w-5 shrink-0 text-[13px] ${st.cls}`}>{st.text}</span>
+                  ) : (
+                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[11px] font-bold whitespace-nowrap shrink-0">{st.text}</span>
+                  )}
+                  <span className="text-[13px] font-medium text-slate-700 truncate" title={item.name}>{item.name}</span>
+                </div>
+                <p className="flex-1 text-[13px] text-slate-600 leading-relaxed min-w-0">
+                  {v?.detail || (item.description ? <span className="text-slate-400">{item.description}</span> : <span className="text-slate-300">—</span>)}
+                </p>
+                {canEdit && (
+                  <button
+                    onClick={() => onCellClick(item, broadcaster, v)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-all shrink-0"
+                    title="수정"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -246,7 +252,7 @@ export default function PolicyPage() {
   const [categories, setCategories] = useState([]);
   const [broadcasters, setBroadcasters] = useState([]);
   const [tab, setTab] = useState('all');
-  const [editCell, setEditCell] = useState(null); // { item, broadcaster, value }
+  const [editCell, setEditCell] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -268,31 +274,31 @@ export default function PolicyPage() {
   };
 
   return (
-    <div className="p-8 lg:p-10">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">방송사별 정책 정리</h2>
-        <p className="text-sm text-slate-400 mt-1">
+    <div className="p-6 lg:p-8">
+      <div className="mb-5">
+        <h2 className="text-xl font-bold text-slate-800">방송사별 정책 정리</h2>
+        <p className="text-[13px] text-slate-400 mt-0.5">
           전체 탭에서 한눈에 비교하고, 방송사별 탭에서 상세 규칙을 확인합니다.
           {canEditPolicy && ' 셀을 눌러 수정할 수 있습니다.'}
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 flex-wrap mb-6">
+      <div className="flex items-center gap-1.5 flex-wrap mb-4">
         <button
           onClick={() => setTab('all')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            tab === 'all' ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            tab === 'all' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
           }`}
         >
-          <LayoutGrid size={13} /> 전체
+          <LayoutGrid size={12} /> 전체
         </button>
         {broadcasters.map((b) => (
           <button
             key={b.id}
             onClick={() => setTab(b.id)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              tab === b.id ? 'text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              tab === b.id ? 'text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
             }`}
             style={tab === b.id ? { background: b.color || '#6366f1' } : undefined}
           >

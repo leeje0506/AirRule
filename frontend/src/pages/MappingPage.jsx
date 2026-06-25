@@ -1,15 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
-import { GitBranch, Link2, FileText, Code2, Pencil, X, Info, Wand2, ShieldCheck } from 'lucide-react';
+import { Link2, FileText, Code2, Pencil, Info, Wand2, ShieldCheck, ArrowLeftRight, ChevronRight, Check, ArrowRight, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { policyApi, techItemApi, linkApi } from '../api/client';
-import { Card, Btn } from '../components/ui';
+import { Btn } from '../components/ui';
+import { getGuide } from '../data/functionGuide';
+
+// 예시 문자열의 \n(역슬래시 몇 개든) → 실제 줄바꿈
+const nl = (s) => (s == null ? '' : String(s).replace(/\\+n/g, '\n'));
 
 export default function MappingPage() {
   const { canEditTech } = useAuth();
   const [categories, setCategories] = useState([]);
   const [techItems, setTechItems] = useState([]);
   const [links, setLinks] = useState([]);
-  const [selected, setSelected] = useState(null); // { side:'policy'|'tech', id }
+  const [mode, setMode] = useState('policy'); // 'policy' | 'tech'
+  const [selectedId, setSelectedId] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -31,15 +36,6 @@ export default function MappingPage() {
   const countTech = (pid) => links.filter((l) => l.policy_item_id === pid).length;
   const countPolicy = (tid) => links.filter((l) => l.tech_item_id === tid).length;
 
-  const connectedTechSet = useMemo(
-    () => (selected?.side === 'policy' ? new Set(techIdsForPolicy(selected.id)) : new Set()),
-    [selected, links]
-  );
-  const connectedPolicySet = useMemo(
-    () => (selected?.side === 'tech' ? new Set(policyIdsForTech(selected.id)) : new Set()),
-    [selected, links]
-  );
-
   const toggleLink = async (pid, tid) => {
     const existing = linkMap[`${pid}|${tid}`];
     if (existing) await linkApi.remove(existing);
@@ -47,113 +43,132 @@ export default function MappingPage() {
     setLinks(await linkApi.all());
   };
 
-  const clickPolicy = async (pid) => {
-    if (editMode && selected?.side === 'tech') { await toggleLink(pid, selected.id); return; }
-    setSelected((s) => (s?.side === 'policy' && s.id === pid ? null : { side: 'policy', id: pid }));
-  };
-  const clickTech = async (tid) => {
-    if (editMode && selected?.side === 'policy') { await toggleLink(selected.id, tid); return; }
-    setSelected((s) => (s?.side === 'tech' && s.id === tid ? null : { side: 'tech', id: tid }));
-  };
+  const switchMode = (m) => { setMode(m); setSelectedId(null); };
 
-  // 보기 모드에서 상대편은 "연결된 것만". 편집 모드에서는 전체 노출(추가하려고).
-  const techFilterToConnected = selected?.side === 'policy' && !editMode;
-  const policyFilterToConnected = selected?.side === 'tech' && !editMode;
-
-  const typeBadge = (t) => (
-    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase ${
-      t === 'processing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-purple-50 text-purple-700 border-purple-200'
-    }`}>{t === 'processing' ? '후처리' : '검증'}</span>
-  );
-
-  // ── 기술 항목 한 줄 ──
-  const TechRow = ({ t }) => {
-    const isSel = selected?.side === 'tech' && selected.id === t.id;
-    const isConn = selected?.side === 'policy' && connectedTechSet.has(t.id);
-    const n = countPolicy(t.id);
+  // ── 왼쪽 목록 행 ──
+  const MasterRow = ({ id, title, sub, count, accent }) => {
+    const sel = selectedId === id;
     return (
-      <button onClick={() => clickTech(t.id)}
-        className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg border transition-all ${
-          isSel ? 'border-purple-500 bg-purple-50' : isConn ? 'border-indigo-300 bg-indigo-50/40' : 'border-slate-150 bg-white hover:bg-slate-50'
+      <button onClick={() => setSelectedId(sel ? null : id)}
+        className={`group w-full flex items-center gap-2 text-left pl-3 pr-2.5 py-2 border-l-2 border-b border-b-slate-100 last:border-b-0 transition-colors ${
+          sel ? `${accent.bar} ${accent.bg}` : 'border-l-transparent hover:bg-slate-50'
         }`}>
-        <div className="min-w-0">
-          <span className="text-[13px] font-medium text-slate-700 truncate block">{t.name}</span>
-          {t.function_name && <span className="text-[10px] text-indigo-400 font-mono truncate block">{t.function_name}()</span>}
+        <div className="min-w-0 flex-1">
+          <span className="text-[13px] text-slate-700 truncate block">{title}</span>
+          {sub && <span className="text-[10px] text-indigo-400/80 font-mono truncate block">{sub}</span>}
         </div>
-        {n > 0 && <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 shrink-0 ml-2"><Link2 size={11} /> {n}</span>}
+        {count > 0 && <span className="flex items-center gap-0.5 text-[10px] font-bold text-slate-300 group-hover:text-slate-400 shrink-0"><Link2 size={10} /> {count}</span>}
+        <ChevronRight size={13} className={`shrink-0 ${sel ? 'text-slate-400' : 'text-slate-200 group-hover:text-slate-300'}`} />
       </button>
     );
   };
 
-  // ── 기술 패널: 후처리/검증 분리 ──
-  const TechGroup = ({ kind, items }) => {
-    const isProc = kind === 'processing';
-    const Icon = isProc ? Wand2 : ShieldCheck;
-    return (
-      <div className="mb-3">
-        <div className="flex items-center gap-1.5 px-1 mb-1.5">
-          <Icon size={12} className={isProc ? 'text-emerald-600' : 'text-purple-600'} />
-          <span className={`text-[10px] font-bold uppercase tracking-wide ${isProc ? 'text-emerald-700' : 'text-purple-700'}`}>{isProc ? '후처리' : '검증'}</span>
-          <span className="text-[10px] font-bold text-slate-400">{items.length}</span>
+  const renderMaster = () => {
+    if (mode === 'policy') {
+      const accent = { bar: 'border-l-blue-500', bg: 'bg-blue-50/70' };
+      return categories.map((cat) => (
+        <div key={cat.id} className="mb-1">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1">{cat.name}</p>
+          {cat.items.map((item) => <MasterRow key={item.id} id={item.id} title={item.name} count={countTech(item.id)} accent={accent} />)}
         </div>
-        {items.length === 0 ? (
-          <p className="text-[11px] text-slate-300 px-1 py-1">해당 없음</p>
-        ) : (
-          <div className="space-y-1">{items.map((t) => <TechRow key={t.id} t={t} />)}</div>
-        )}
-      </div>
-    );
-  };
-
-  const visibleTech = techFilterToConnected ? techItems.filter((t) => connectedTechSet.has(t.id)) : techItems;
-  const techProc = visibleTech.filter((t) => t.type === 'processing');
-  const techValid = visibleTech.filter((t) => t.type === 'validation');
-
-  // ── 정책 패널 ──
-  const PolicyRow = ({ item }) => {
-    const isSel = selected?.side === 'policy' && selected.id === item.id;
-    const isConn = selected?.side === 'tech' && connectedPolicySet.has(item.id);
-    const n = countTech(item.id);
-    return (
-      <button onClick={() => clickPolicy(item.id)}
-        className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg border transition-all ${
-          isSel ? 'border-blue-500 bg-blue-50' : isConn ? 'border-indigo-300 bg-indigo-50/40' : 'border-slate-150 bg-white hover:bg-slate-50'
-        }`}>
-        <span className="text-[13px] font-medium text-slate-700">{item.name}</span>
-        {n > 0 && <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 shrink-0"><Link2 size={11} /> {n}</span>}
-      </button>
-    );
-  };
-
-  const visibleCategories = useMemo(() => {
-    if (!policyFilterToConnected) return categories;
-    return categories
-      .map((c) => ({ ...c, items: c.items.filter((i) => connectedPolicySet.has(i.id)) }))
-      .filter((c) => c.items.length > 0);
-  }, [categories, policyFilterToConnected, connectedPolicySet]);
-
-  // ── 상세: 선택 항목의 연결 상대 ──
-  const detail = useMemo(() => {
-    if (!selected) return null;
-    if (selected.side === 'policy') {
-      const p = policyItemById[selected.id]; if (!p) return null;
-      const techs = techIdsForPolicy(selected.id).map((id) => techById[id]).filter(Boolean);
-      return { kind: 'policy', title: p.name, sub: p._cat, desc: p.description,
-        proc: techs.filter((t) => t.type === 'processing'), valid: techs.filter((t) => t.type === 'validation') };
+      ));
     }
-    const t = techById[selected.id]; if (!t) return null;
-    const pols = policyIdsForTech(selected.id).map((id) => policyItemById[id]).filter(Boolean);
+    const accent = { bar: 'border-l-purple-500', bg: 'bg-purple-50/70' };
+    const proc = techItems.filter((t) => t.type === 'processing');
+    const valid = techItems.filter((t) => t.type === 'validation');
+    const block = (kind, items) => {
+      const isProc = kind === 'processing';
+      const Icon = isProc ? Wand2 : ShieldCheck;
+      return (
+        <div className="mb-1">
+          <div className="flex items-center gap-1.5 px-3 py-1">
+            <Icon size={11} className={isProc ? 'text-emerald-600' : 'text-purple-600'} />
+            <span className={`text-[10px] font-bold uppercase tracking-wide ${isProc ? 'text-emerald-700' : 'text-purple-700'}`}>{isProc ? '후처리' : '검증'}</span>
+            <span className="text-[10px] font-bold text-slate-300">{items.length}</span>
+          </div>
+          {items.map((t) => <MasterRow key={t.id} id={t.id} title={t.name} sub={t.function_name ? `${t.function_name}()` : ''} count={countPolicy(t.id)} accent={accent} />)}
+        </div>
+      );
+    };
+    return <>{block('processing', proc)}{block('validation', valid)}</>;
+  };
+
+  // ── 오른쪽 디테일 ──
+  const renderDetail = () => {
+    if (!selectedId) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-slate-300 py-16">
+          <ArrowLeftRight size={20} className="mb-2" />
+          <p className="text-[13px]">왼쪽에서 {mode === 'policy' ? '정책' : '기술'} 항목을 선택하세요</p>
+          <p className="text-[11px] text-slate-300 mt-0.5">연결된 항목과 동작 설명이 여기에 표시됩니다</p>
+        </div>
+      );
+    }
+
+    // ── 정책 선택 ──
+    if (mode === 'policy') {
+      const p = policyItemById[selectedId]; if (!p) return null;
+      const connSet = new Set(techIdsForPolicy(selectedId));
+      const pool = editMode ? techItems : techItems.filter((t) => connSet.has(t.id));
+      const proc = pool.filter((t) => t.type === 'processing');
+      const valid = pool.filter((t) => t.type === 'validation');
+      return (
+        <>
+          <DetailHeader kindLabel="정책 항목" kindCls="bg-blue-50 text-blue-600" title={p.name} desc={p.description} />
+          <div className="px-4 py-4 space-y-5">
+            {!editMode && (
+              <p className="text-[12px] text-slate-500 -mt-1">이 정책은 아래 후처리·검증 함수로 처리·검사됩니다.</p>
+            )}
+            <ConnGroup kind="processing" items={proc} connSet={connSet} editMode={editMode} onToggle={(t) => toggleLink(p.id, t.id)} />
+            <ConnGroup kind="validation" items={valid} connSet={connSet} editMode={editMode} onToggle={(t) => toggleLink(p.id, t.id)} />
+          </div>
+        </>
+      );
+    }
+
+    // ── 기술 선택 ──
+    const t = techById[selectedId]; if (!t) return null;
+    const connSet = new Set(policyIdsForTech(selectedId));
+    const pool = editMode ? policyItems : policyItems.filter((p) => connSet.has(p.id));
     const byCat = {};
-    pols.forEach((p) => { (byCat[p._cat] = byCat[p._cat] || []).push(p); });
-    return { kind: 'tech', title: t.name, sub: t.function_name ? `${t.function_name}()` : '', desc: t.desc, type: t.type, byCat };
-  }, [selected, links, techById, policyItemById]);
+    pool.forEach((p) => { (byCat[p._cat] = byCat[p._cat] || []).push(p); });
+    return (
+      <>
+        <DetailHeader kindLabel="기술 항목" kindCls="bg-purple-50 text-purple-600" title={t.name} sub={t.function_name ? `${t.function_name}()` : ''} />
+        <div className="px-4 py-4 space-y-5">
+          <FunctionExplain item={t} open />
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">
+              {editMode ? '이 함수를 적용할 정책 선택' : '이 함수가 적용되는 정책'}
+            </p>
+            {Object.keys(byCat).length === 0 ? (
+              <p className="text-xs text-slate-400">연결된 정책 항목이 없습니다.</p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(byCat).map(([cat, items]) => (
+                  <div key={cat}>
+                    <p className="text-[10px] font-bold text-slate-400 mb-1">{cat}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+                      {items.map((p) => (
+                        <ToggleRow key={p.id} label={p.name} on={connSet.has(p.id)} editMode={editMode} onToggle={() => toggleLink(p.id, t.id)} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  };
 
   return (
-    <div className="p-8 lg:p-10">
-      <div className="flex justify-between items-end mb-6">
+    <div className="p-6 lg:p-8">
+      <div className="flex justify-between items-end mb-5 gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">정책 ↔ 기술 연결 찾기</h2>
-          <p className="text-sm text-slate-400 mt-1">한쪽 항목을 누르면 반대쪽에 연결된 항목만 모아서 보여줍니다.</p>
+          <h2 className="text-xl font-bold text-slate-800">정책 ↔ 기술 연결 찾기</h2>
+          <p className="text-[13px] text-slate-400 mt-0.5">항목을 고르면 연결된 함수가 무엇을 어떻게 하는지 예시와 함께 보여줍니다.</p>
         </div>
         {canEditTech && (
           <Btn variant={editMode ? 'accent' : 'primary'} onClick={() => setEditMode((v) => !v)}>
@@ -162,11 +177,24 @@ export default function MappingPage() {
         )}
       </div>
 
+      {/* 방향 토글 */}
+      <div className="inline-flex items-center p-0.5 bg-slate-100 rounded-lg mb-4">
+        <button onClick={() => switchMode('policy')}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'policy' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          <FileText size={12} /> 정책 기준
+        </button>
+        <ArrowLeftRight size={12} className="text-slate-300 mx-1" />
+        <button onClick={() => switchMode('tech')}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'tech' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          <Code2 size={12} /> 기술 기준
+        </button>
+      </div>
+
       {editMode && (
-        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-indigo-50 border border-indigo-100 rounded-xl">
-          <Info size={14} className="text-indigo-500 shrink-0" />
-          <p className="text-xs text-indigo-700 font-medium">
-            {selected ? `${selected.side === 'policy' ? '정책' : '기술'} 항목 선택됨 — 반대쪽 항목을 눌러 연결/해제` : '한쪽 항목을 먼저 선택하세요. (편집 모드에서는 전체 항목이 보입니다)'}
+        <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-indigo-50/70 border border-indigo-100 rounded-lg">
+          <Info size={13} className="text-indigo-500 shrink-0" />
+          <p className="text-[11px] text-indigo-700 font-medium">
+            {selectedId ? '오른쪽 항목의 체크박스를 눌러 연결/해제하세요. (전체 후보가 보입니다)' : `왼쪽에서 ${mode === 'policy' ? '정책' : '기술'} 항목을 먼저 선택하세요.`}
           </p>
         </div>
       )}
@@ -174,137 +202,146 @@ export default function MappingPage() {
       {loading ? (
         <p className="text-sm text-slate-400 py-12 text-center">불러오는 중...</p>
       ) : (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* 정책 항목 */}
-            <Card>
-              <div className="px-5 py-3 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText size={14} className="text-blue-500" />
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">정책 항목</span>
-                </div>
-                {policyFilterToConnected && <span className="text-[10px] font-bold text-indigo-500">연결된 항목만</span>}
-              </div>
-              <div className="max-h-[60vh] overflow-y-auto p-3 space-y-4">
-                {visibleCategories.length === 0 ? (
-                  <p className="text-xs text-slate-300 text-center py-6">연결된 정책 항목이 없습니다</p>
-                ) : visibleCategories.map((cat) => (
-                  <div key={cat.id}>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 mb-1.5">{cat.name}</p>
-                    <div className="space-y-1">{cat.items.map((item) => <PolicyRow key={item.id} item={item} />)}</div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* 기술 항목 (후처리/검증 분리) */}
-            <Card>
-              <div className="px-5 py-3 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Code2 size={14} className="text-purple-500" />
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">후처리 · 검증 항목</span>
-                </div>
-                {techFilterToConnected && <span className="text-[10px] font-bold text-indigo-500">연결된 항목만</span>}
-              </div>
-              <div className="max-h-[60vh] overflow-y-auto p-3">
-                {visibleTech.length === 0 ? (
-                  <p className="text-xs text-slate-300 text-center py-6">연결된 기술 항목이 없습니다</p>
-                ) : (
-                  <>
-                    <TechGroup kind="processing" items={techProc} />
-                    <TechGroup kind="validation" items={techValid} />
-                  </>
-                )}
-              </div>
-            </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,320px)_1fr] gap-4 items-start">
+          <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden">
+            <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-1.5">
+              {mode === 'policy' ? <FileText size={13} className="text-blue-500" /> : <Code2 size={13} className="text-purple-500" />}
+              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{mode === 'policy' ? '정책 항목' : '후처리 · 검증 항목'}</span>
+            </div>
+            <div className="max-h-[68vh] overflow-y-auto py-1">{renderMaster()}</div>
           </div>
 
-          {/* 상세 */}
-          {detail ? (
-            <Card className="mt-4">
-              <div className="px-6 py-4 border-b border-slate-100">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                    detail.kind === 'policy' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'
-                  }`}>{detail.kind === 'policy' ? '정책 항목' : '기술 항목'}</span>
-                  <h4 className="text-sm font-bold text-slate-800">{detail.title}</h4>
-                  {detail.sub && <span className="text-[11px] text-slate-400 font-mono">{detail.sub}</span>}
-                </div>
-                {detail.desc && <p className="text-[11px] text-slate-400 mt-1">{detail.desc}</p>}
-              </div>
-
-              <div className="p-6 space-y-5">
-                {detail.kind === 'policy' ? (
-                  <>
-                    <DetailGroup kind="processing" items={detail.proc} editMode={editMode}
-                      onUnlink={(t) => toggleLink(selected.id, t.id)} typeBadge={typeBadge} />
-                    <DetailGroup kind="validation" items={detail.valid} editMode={editMode}
-                      onUnlink={(t) => toggleLink(selected.id, t.id)} typeBadge={typeBadge} />
-                  </>
-                ) : (
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-3">연결된 정책 항목</p>
-                    {Object.keys(detail.byCat).length === 0 ? (
-                      <p className="text-xs text-slate-400">연결된 항목이 없습니다.{canEditTech ? " '연결 편집'에서 추가할 수 있어요." : ''}</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {Object.entries(detail.byCat).map(([cat, items]) => (
-                          <div key={cat}>
-                            <p className="text-[10px] font-bold text-slate-400 mb-1.5">{cat}</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {items.map((p) => (
-                                <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
-                                  <span className="text-[12px] font-medium text-slate-700">{p.name}</span>
-                                  {editMode && <button onClick={() => toggleLink(p.id, selected.id)} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0" title="연결 해제"><X size={13} /></button>}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Card>
-          ) : (
-            <div className="mt-4 flex items-center justify-center gap-2 py-8 text-slate-300 border-2 border-dashed border-slate-200 rounded-2xl">
-              <GitBranch size={18} />
-              <p className="text-sm">정책 항목이나 기술 항목을 눌러 연결을 확인하세요</p>
-            </div>
-          )}
-        </>
+          <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden min-h-[50vh]">
+            {renderDetail()}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-// ── 상세 내 후처리/검증 그룹 ──
-function DetailGroup({ kind, items, editMode, onUnlink, typeBadge }) {
+// ── 디테일 헤더 ──
+function DetailHeader({ kindLabel, kindCls, title, sub, desc }) {
+  return (
+    <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/40">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${kindCls}`}>{kindLabel}</span>
+        <h4 className="text-sm font-bold text-slate-800">{title}</h4>
+        {sub && <span className="text-[11px] text-slate-400 font-mono">{sub}</span>}
+      </div>
+      {desc && <p className="text-[11px] text-slate-400 mt-1">{desc}</p>}
+    </div>
+  );
+}
+
+// ── 정책 선택 시: 연결된 후처리/검증 그룹 (각 함수 설명+예시) ──
+function ConnGroup({ kind, items, connSet, editMode, onToggle }) {
   const isProc = kind === 'processing';
   const Icon = isProc ? Wand2 : ShieldCheck;
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-2">
-        <Icon size={13} className={isProc ? 'text-emerald-600' : 'text-purple-600'} />
+        <Icon size={12} className={isProc ? 'text-emerald-600' : 'text-purple-600'} />
         <span className={`text-[11px] font-bold uppercase tracking-wide ${isProc ? 'text-emerald-700' : 'text-purple-700'}`}>{isProc ? '후처리' : '검증'}</span>
-        <span className="text-[10px] font-bold text-slate-400">{items.length}</span>
+        <span className="text-[10px] font-bold text-slate-300">{items.length}</span>
       </div>
+
       {items.length === 0 ? (
         <p className="text-[11px] text-slate-300 pl-1">연결된 {isProc ? '후처리' : '검증'} 없음</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      ) : editMode ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
           {items.map((t) => (
-            <div key={t.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
-              <div className="min-w-0">
-                <span className="text-[12px] font-medium text-slate-700 truncate block">{t.name}</span>
-                {t.function_name && <span className="text-[10px] text-indigo-400 font-mono truncate block">{t.function_name}()</span>}
-              </div>
-              {editMode && <button onClick={() => onUnlink(t)} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0" title="연결 해제"><X size={13} /></button>}
-            </div>
+            <ToggleRow key={t.id} label={t.name} sub={t.function_name ? `${t.function_name}()` : ''}
+              on={connSet.has(t.id)} editMode onToggle={() => onToggle(t)} />
           ))}
         </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((t) => <FunctionExplain key={t.id} item={t} />)}
+        </div>
       )}
+    </div>
+  );
+}
+
+// ── 함수 설명 + 케이스 예시 카드 ──
+function FunctionExplain({ item, open = false }) {
+  const guide = getGuide(item);
+  const isProc = item.type === 'processing';
+  const summary = guide?.summary || item.desc || '설명이 등록되지 않았습니다.';
+  const cases = guide?.cases || [];
+
+  return (
+    <div className="rounded-lg border border-slate-200/70 overflow-hidden">
+      <div className={`flex items-center gap-2 px-3 py-2 ${isProc ? 'bg-emerald-50/50' : 'bg-purple-50/50'}`}>
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isProc ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{isProc ? '후처리' : '검증'}</span>
+        <span className="text-[13px] font-bold text-slate-800">{item.name}</span>
+        {item.function_name && <span className="text-[10px] text-indigo-400/80 font-mono">{item.function_name}()</span>}
+      </div>
+      <div className="px-3 py-2.5">
+        <p className="text-[12px] text-slate-600 leading-relaxed">{summary}</p>
+        {cases.length > 0 && (
+          <div className="mt-2.5 space-y-1.5">
+            {cases.map((c, i) => isProc
+              ? <ProcCase key={i} c={c} />
+              : <ValidCase key={i} c={c} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 후처리 예시: before → after
+function ProcCase({ c }) {
+  return (
+    <div className="flex items-stretch gap-2 text-[11px]">
+      {c.label && <span className="shrink-0 w-16 pt-1 text-[10px] font-bold text-slate-400">{c.label}</span>}
+      <div className="flex-1 grid grid-cols-[1fr_auto_1fr] gap-1.5 items-center min-w-0">
+        <div className="px-2 py-1 bg-slate-50 rounded border border-slate-150 font-mono text-slate-400 line-through whitespace-pre-wrap break-words">{nl(c.before)}</div>
+        <ArrowRight size={12} className="text-emerald-500 shrink-0" />
+        <div className="px-2 py-1 bg-emerald-50/60 rounded border border-emerald-100 font-mono text-slate-700 whitespace-pre-wrap break-words">{nl(c.after)}</div>
+      </div>
+    </div>
+  );
+}
+
+// 검증 예시: input + 통과/재작업
+function ValidCase({ c }) {
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      {c.label && <span className="shrink-0 w-16 text-[10px] font-bold text-slate-400">{c.label}</span>}
+      <div className="flex-1 px-2 py-1 bg-slate-50 rounded border border-slate-150 font-mono text-slate-600 whitespace-pre-wrap break-words min-w-0">{nl(c.input)}</div>
+      {c.fail
+        ? <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700"><X size={10} /> 재작업</span>
+        : <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700"><Check size={10} /> 통과</span>}
+    </div>
+  );
+}
+
+// ── 편집 모드 체크 토글 행 ──
+function ToggleRow({ label, sub, on, editMode, onToggle }) {
+  if (editMode) {
+    return (
+      <button onClick={onToggle}
+        className={`w-full flex items-center gap-2 text-left px-2 py-1.5 rounded transition-colors ${on ? 'bg-indigo-50/70' : 'hover:bg-slate-50'}`}>
+        <span className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${on ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
+          {on && <Check size={11} className="text-white" />}
+        </span>
+        <span className="min-w-0">
+          <span className={`text-[12px] truncate block ${on ? 'text-slate-700 font-medium' : 'text-slate-500'}`}>{label}</span>
+          {sub && <span className="text-[10px] text-indigo-400/80 font-mono truncate block">{sub}</span>}
+        </span>
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5">
+      <span className="w-1 h-1 rounded-full bg-indigo-400 shrink-0" />
+      <span className="min-w-0">
+        <span className="text-[12px] text-slate-700 truncate block">{label}</span>
+        {sub && <span className="text-[10px] text-indigo-400/80 font-mono truncate block">{sub}</span>}
+      </span>
     </div>
   );
 }

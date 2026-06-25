@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Edit3, Save, X, Code2, Copy, Check as CheckIcon, Search, Layers, Wand2, ShieldCheck, LayoutGrid, Building2 } from 'lucide-react';
+import { Plus, Edit3, Save, X, Code2, Copy, Check as CheckIcon, Search, Wand2, ShieldCheck, LayoutGrid, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { techItemApi, broadcasterApi } from '../api/client';
 import { Btn, Modal, Input, Select } from '../components/ui';
@@ -24,18 +24,14 @@ function sortBroadcasters(list) {
   });
 }
 
-// 표시 이름 앞 "[방송사]" 접두사 제거 (함수 목록용 — 순수 함수명만)
 const pureName = (name) => (name || '').replace(/^\s*\[[^\]]*\]\s*/, '').trim();
 
-// ── 함수 고정 번호 ───────────────────────────────────────────────
-//   분류: 공통(C) / 전용(S) / 납품(F)  ×  후처리(P) / 검증(V)
-//   각 칸 안에서 function_name 기준으로 번호 부여 → 같은 함수는 같은 번호
+// ── 함수 고정 번호 (공통C/전용S/납품F × 후처리P/검증V) ──
 const groupCode = (it) => (it.stage === 'final' ? 'F' : it.scope === 'common' ? 'C' : 'S');
 const typeCode = (it) => (it.type === 'processing' ? 'P' : 'V');
-const GROUP_LABEL = { C: '공통', S: '전용', F: '납품' };
 
 function buildNumbering(items) {
-  const buckets = {}; // 'CP' → Map(function_name → n)
+  const buckets = {};
   [...items].sort((a, b) => a._idx - b._idx).forEach((it) => {
     if (!it.function_name) return;
     const key = groupCode(it) + typeCode(it);
@@ -58,7 +54,7 @@ function makeCodeOf(buckets) {
 function CodeBadge({ code }) {
   if (!code) return null;
   return (
-    <span className="inline-flex items-center text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md bg-slate-800 text-white tracking-wide shrink-0">
+    <span className="inline-flex items-center text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-slate-700 text-white tracking-wide shrink-0">
       {code}
     </span>
   );
@@ -173,38 +169,36 @@ function TechItemFormModal({ open, onClose, initial, onSaved }) {
 function ParamChips({ params }) {
   if (!params || Object.keys(params).length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
+    <div className="flex flex-wrap gap-1 mt-1">
       {Object.entries(params).map(([k, v]) => (
-        <div key={k} className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+        <span key={k} className="inline-flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded">
           <span className="text-[9px] font-mono text-slate-400">{k}</span>
           <span className="text-[9px] font-mono font-bold text-indigo-600">{String(v)}</span>
-        </div>
+        </span>
       ))}
     </div>
   );
 }
 
-// ── (탭1) Item Card ─────────────────────────────────────────────
+// ── (탭1) 함수 한 줄 ─────────────────────────────────────────────
 
-function ItemCard({ item, code, canEdit, onView, onEdit }) {
+function ItemRow({ item, code, canEdit, onView, onEdit }) {
+  const hasParams = item.params && Object.keys(item.params).length > 0;
   return (
-    <div className="group p-3 rounded-xl border border-slate-150 bg-white hover:border-slate-300 hover:shadow-sm transition-all">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <CodeBadge code={code} />
-            <span className="text-[13px] font-bold text-slate-800">{pureName(item.name)}</span>
-          </div>
-          {item.function_name && <p className="text-[11px] text-indigo-500 font-mono mt-0.5 truncate">{item.function_name}()</p>}
-          {item.desc && <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{item.desc}</p>}
+    <div className="group flex items-start gap-3 px-3 py-2 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/70 transition-colors">
+      <CodeBadge code={code} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <span className="text-[13px] font-medium text-slate-800">{pureName(item.name)}</span>
+          {item.function_name && <span className="text-[11px] text-indigo-400 font-mono">{item.function_name}()</span>}
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button onClick={() => onView(item)} className="p-1.5 text-slate-300 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors" title="코드 보기"><Code2 size={14} /></button>
-          {canEdit && <button onClick={() => onEdit(item)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors" title="수정"><Edit3 size={14} /></button>}
-        </div>
+        {item.desc && <p className="text-[11px] text-slate-400 truncate" title={item.desc}>{item.desc}</p>}
+        {hasParams && <ParamChips params={item.params} />}
       </div>
-      {item.func_type && <span className="inline-block mt-1.5 text-[9px] font-mono text-slate-400">{item.func_type}</span>}
-      <ParamChips params={item.params} />
+      <div className="flex items-center gap-0.5 shrink-0">
+        <button onClick={() => onView(item)} className="p-1.5 text-slate-300 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors" title="코드 보기"><Code2 size={14} /></button>
+        {canEdit && <button onClick={() => onEdit(item)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded hover:bg-indigo-50 transition-colors" title="수정"><Edit3 size={14} /></button>}
+      </div>
     </div>
   );
 }
@@ -213,31 +207,29 @@ function TypeBlock({ kind, items, codeOf, canEdit, onView, onEdit }) {
   const isProc = kind === 'processing';
   const Icon = isProc ? Wand2 : ShieldCheck;
   return (
-    <div className={`rounded-2xl border bg-white overflow-hidden ${isProc ? 'border-emerald-100' : 'border-purple-100'}`}>
-      <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${isProc ? 'bg-emerald-50/60 border-emerald-100' : 'bg-purple-50/60 border-purple-100'}`}>
-        <Icon size={14} className={isProc ? 'text-emerald-600' : 'text-purple-600'} />
-        <span className={`text-xs font-bold ${isProc ? 'text-emerald-700' : 'text-purple-700'}`}>{isProc ? '후처리' : '검증'}</span>
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isProc ? 'bg-emerald-100 text-emerald-600' : 'bg-purple-100 text-purple-600'}`}>{items.length}</span>
+    <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden">
+      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-100">
+        <Icon size={12} className={isProc ? 'text-emerald-600' : 'text-purple-600'} />
+        <span className={`text-[11px] font-bold uppercase tracking-wide ${isProc ? 'text-emerald-700' : 'text-purple-700'}`}>{isProc ? '후처리' : '검증'}</span>
+        <span className="text-[10px] font-bold text-slate-300">{items.length}</span>
       </div>
-      <div className="p-3 space-y-2 max-h-[60vh] overflow-y-auto">
+      <div className="max-h-[58vh] overflow-y-auto">
         {items.length === 0 ? <p className="text-xs text-slate-300 text-center py-6">항목 없음</p>
-          : items.map((item) => <ItemCard key={item.id} item={item} code={codeOf(item)} canEdit={canEdit} onView={onView} onEdit={onEdit} />)}
+          : items.map((item) => <ItemRow key={item.id} item={item} code={codeOf(item)} canEdit={canEdit} onView={onView} onEdit={onEdit} />)}
       </div>
     </div>
   );
 }
 
-function StageSection({ label, sub, accent, proc, valid, codeOf, canEdit, onView, onEdit, hideValidation }) {
+function StageSection({ label, sub, dot, proc, valid, codeOf, canEdit, onView, onEdit, hideValidation }) {
   return (
-    <div className="mb-8">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-sm" style={{ background: accent }}><Layers size={16} /></div>
-        <div>
-          <h3 className="text-base font-bold text-slate-800">{label}</h3>
-          <p className="text-[11px] text-slate-400">{sub}</p>
-        </div>
+    <div className="mb-6">
+      <div className="flex items-baseline gap-2 mb-2">
+        <span className="w-2 h-2 rounded-full shrink-0 translate-y-[-1px]" style={{ background: dot }} />
+        <h3 className="text-[13px] font-bold text-slate-700">{label}</h3>
+        <p className="text-[11px] text-slate-400">{sub}</p>
       </div>
-      <div className={`grid grid-cols-1 gap-4 ${hideValidation ? '' : 'lg:grid-cols-2'}`}>
+      <div className={`grid grid-cols-1 gap-3 ${hideValidation ? '' : 'lg:grid-cols-2'}`}>
         <TypeBlock kind="processing" items={proc} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
         {!hideValidation && <TypeBlock kind="validation" items={valid} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />}
       </div>
@@ -246,28 +238,24 @@ function StageSection({ label, sub, accent, proc, valid, codeOf, canEdit, onView
 }
 
 function FunctionsView({ items, codeOf, canEdit, onView, onEdit }) {
-  // 함수 목록 탭: function_name 기준 중복 제거 (칸별 첫 등장 = 기본 파라미터 대표)
   const group = (stage, type) => {
-    const rows = items
-      .filter((i) => i.stage === stage && i.type === type)
-      .sort((a, b) => (a._idx ?? 0) - (b._idx ?? 0));
+    const rows = items.filter((i) => i.stage === stage && i.type === type).sort((a, b) => (a._idx ?? 0) - (b._idx ?? 0));
     const seen = new Set();
     const uniq = [];
     for (const r of rows) {
       const key = r.function_name || r.id;
       if (seen.has(key)) continue;
-      seen.add(key);
-      uniq.push(r);
+      seen.add(key); uniq.push(r);
     }
     return uniq.sort((a, b) => (a.scope !== b.scope ? (a.scope === 'common' ? -1 : 1) : (a.name || '').localeCompare(b.name || '')));
   };
   return (
     <>
-      <StageSection label="1차 (Stage 1)" sub="모든 방송사 공통 — 정규화·기본 검증" accent="#2563eb"
+      <StageSection label="1차 (Stage 1)" sub="모든 방송사 공통 — 정규화·기본 검증" dot="#2563eb"
         proc={group('stage1', 'processing')} valid={group('stage1', 'validation')} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
-      <StageSection label="2차 (Stage 2)" sub="공통 + 방송사별 — 줄바꿈·오버랩·마침표 등" accent="#4f46e5"
+      <StageSection label="2차 (Stage 2)" sub="공통 + 방송사별 — 줄바꿈·오버랩·마침표 등" dot="#4f46e5"
         proc={group('stage2', 'processing')} valid={group('stage2', 'validation')} codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
-      <StageSection label="3차 (최종 납품)" sub="납품 직전 처리 — 배너 삽입·마침표 삭제 (방송사별)" accent="#0f766e"
+      <StageSection label="3차 (최종 납품)" sub="납품 직전 처리 — 배너 삽입·마침표 삭제 (방송사별)" dot="#0f766e"
         proc={group('final', 'processing')} valid={[]} hideValidation codeOf={codeOf} canEdit={canEdit} onView={onView} onEdit={onEdit} />
     </>
   );
@@ -276,38 +264,34 @@ function FunctionsView({ items, codeOf, canEdit, onView, onEdit }) {
 // ── (탭2) 방송사별 파이프라인 ────────────────────────────────────
 
 function PipelineRow({ item, code, bcName, onView }) {
-  const isProc = item.type === 'processing';
-  const displayName = item.scope === 'common'
-    ? pureName(item.name)
-    : `[${bcName}] ${pureName(item.name)}`;
+  const displayName = item.scope === 'common' ? pureName(item.name) : `[${bcName}] ${pureName(item.name)}`;
+  const hasParams = item.params && Object.keys(item.params).length > 0;
   return (
-    <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-slate-150 bg-white hover:border-slate-300 transition-all">
+    <div className="group flex items-start gap-3 px-3 py-2 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/70 transition-colors">
       <CodeBadge code={code} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[13px] font-bold text-slate-800">{displayName}</span>
-          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${item.scope === 'common' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{item.scope === 'common' ? '공통' : '전용'}</span>
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <span className="text-[13px] font-medium text-slate-800">{displayName}</span>
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.scope === 'common' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-600'}`}>{item.scope === 'common' ? '공통' : '전용'}</span>
+          {item.function_name && <span className="text-[11px] text-indigo-400 font-mono">{item.function_name}()</span>}
         </div>
-        {item.function_name && <p className="text-[11px] text-indigo-500 font-mono mt-0.5 truncate">{item.function_name}()</p>}
-        <ParamChips params={item.params} />
+        {hasParams && <ParamChips params={item.params} />}
       </div>
-      <button onClick={() => onView(item)} className="p-1.5 text-slate-300 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors shrink-0" title="코드 보기"><Code2 size={14} /></button>
+      <button onClick={() => onView(item)} className="p-1.5 text-slate-300 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors shrink-0" title="코드 보기"><Code2 size={14} /></button>
     </div>
   );
 }
 
-function PipelineSection({ label, accent, items, codeOf, bcName, onView }) {
+function PipelineSection({ label, dot, items, codeOf, bcName, onView }) {
   if (!items || items.length === 0) return null;
   return (
-    <div className="mb-5">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="w-2 h-2 rounded-full" style={{ background: accent }} />
-        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide">{label}</h4>
-        <span className="text-[10px] font-bold text-slate-400">{items.length}</span>
+    <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden mb-3">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
+        <span className="w-2 h-2 rounded-full" style={{ background: dot }} />
+        <h4 className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{label}</h4>
+        <span className="text-[10px] font-bold text-slate-300">{items.length}</span>
       </div>
-      <div className="space-y-1.5">
-        {items.map((item) => <PipelineRow key={item.id} item={item} code={codeOf(item)} bcName={bcName} onView={onView} />)}
-      </div>
+      <div>{items.map((item) => <PipelineRow key={item.id} item={item} code={codeOf(item)} bcName={bcName} onView={onView} />)}</div>
     </div>
   );
 }
@@ -331,10 +315,10 @@ function BroadcasterView({ items, broadcasters, codeOf, onView }) {
 
   return (
     <>
-      <div className="flex items-center gap-2 flex-wrap mb-6">
+      <div className="flex items-center gap-1.5 flex-wrap mb-4">
         {broadcasters.map((b) => (
           <button key={b.id} onClick={() => setBc(b)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${bc?.id === b.id ? 'text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${bc?.id === b.id ? 'text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
             style={bc?.id === b.id ? { background: b.color || '#6366f1' } : undefined}>
             {b.name}
           </button>
@@ -342,16 +326,16 @@ function BroadcasterView({ items, broadcasters, codeOf, onView }) {
       </div>
 
       {pipe && (
-        <div className="bg-slate-50/60 rounded-2xl border border-slate-150 p-5">
-          <p className="text-[11px] text-slate-400 mb-4">
-            <span className="font-bold text-slate-600">{bc.name}</span> 자막 처리 순서 (config 기준). 각 함수 앞 코드는 분류별 고정 번호입니다 — 공통(C)·전용(S)·납품(F) × 후처리(P)·검증(V).
+        <>
+          <p className="text-[11px] text-slate-400 mb-3">
+            <span className="font-bold text-slate-600">{bc.name}</span> 처리 순서 (config 기준). 코드는 분류별 고정 번호 — 공통(C)·전용(S)·납품(F) × 후처리(P)·검증(V).
           </p>
-          <PipelineSection label="1차 후처리" accent="#2563eb" items={pipe.s1p} codeOf={codeOf} bcName={bc.name} onView={onView} />
-          <PipelineSection label="1차 검증" accent="#2563eb" items={pipe.s1v} codeOf={codeOf} bcName={bc.name} onView={onView} />
-          <PipelineSection label="2차 후처리" accent="#4f46e5" items={pipe.s2p} codeOf={codeOf} bcName={bc.name} onView={onView} />
-          <PipelineSection label="2차 검증" accent="#4f46e5" items={pipe.s2v} codeOf={codeOf} bcName={bc.name} onView={onView} />
-          <PipelineSection label="최종 납품" accent="#0f766e" items={pipe.fp} codeOf={codeOf} bcName={bc.name} onView={onView} />
-        </div>
+          <PipelineSection label="1차 후처리" dot="#2563eb" items={pipe.s1p} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="1차 검증" dot="#2563eb" items={pipe.s1v} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="2차 후처리" dot="#4f46e5" items={pipe.s2p} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="2차 검증" dot="#4f46e5" items={pipe.s2v} codeOf={codeOf} bcName={bc.name} onView={onView} />
+          <PipelineSection label="최종 납품" dot="#0f766e" items={pipe.fp} codeOf={codeOf} bcName={bc.name} onView={onView} />
+        </>
       )}
     </>
   );
@@ -378,8 +362,6 @@ export default function LibraryPage() {
   useEffect(() => { load(); }, []);
 
   const openEdit = (item) => { setEditTarget(item); setFormOpen(true); };
-
-  // 함수 고정 번호 (전체 items 기준 — 검색과 무관하게 안정적)
   const codeOf = useMemo(() => makeCodeOf(buildNumbering(items)), [items]);
 
   const filtered = useMemo(() => {
@@ -393,18 +375,18 @@ export default function LibraryPage() {
   }, [items, query]);
 
   return (
-    <div className="p-8 lg:p-10">
-      <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
+    <div className="p-6 lg:p-8">
+      <div className="flex justify-between items-center mb-4 gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">후처리 및 검증 항목 라이브러리</h2>
-          <p className="text-sm text-slate-400 mt-1">함수 목록과 방송사별 처리 순서를 확인합니다. (개발팀)</p>
+          <h2 className="text-xl font-bold text-slate-800">후처리 및 검증 항목 라이브러리</h2>
+          <p className="text-[13px] text-slate-400 mt-0.5">함수 목록과 방송사별 처리 순서를 확인합니다. (개발팀)</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {view === 'functions' && (
             <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="항목·함수명 검색"
-                className="w-52 pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm" />
+                className="w-52 pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
           )}
           {canEditTech && (
@@ -416,14 +398,14 @@ export default function LibraryPage() {
       </div>
 
       {/* 탭 */}
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-1.5 mb-5">
         <button onClick={() => setView('functions')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${view === 'functions' ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
-          <LayoutGrid size={13} /> 함수 목록
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'functions' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
+          <LayoutGrid size={12} /> 함수 목록
         </button>
         <button onClick={() => setView('byBroadcaster')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${view === 'byBroadcaster' ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
-          <Building2 size={13} /> 방송사별
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'byBroadcaster' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
+          <Building2 size={12} /> 방송사별
         </button>
       </div>
 
@@ -441,10 +423,10 @@ export default function LibraryPage() {
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2 flex-wrap">
                 <CodeBadge code={codeOf(codeViewItem)} />
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                  codeViewItem.type === 'processing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-purple-50 text-purple-700 border-purple-200'
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                  codeViewItem.type === 'processing' ? 'bg-emerald-50 text-emerald-700' : 'bg-purple-50 text-purple-700'
                 }`}>{codeViewItem.type === 'processing' ? '후처리' : '검증'}</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-500 border-slate-200 uppercase">{codeViewItem.stage}</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 uppercase">{codeViewItem.stage}</span>
                 {codeViewItem.function_name && <span className="text-[11px] font-mono text-indigo-500">{codeViewItem.function_name}()</span>}
                 <span className="text-xs text-slate-500">{codeViewItem.desc}</span>
               </div>

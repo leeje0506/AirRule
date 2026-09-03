@@ -6,3 +6,5 @@ aiosqlite==0.20.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
+srt==3.5.3          # 테스트 파이프라인 엔진(app/engine/rules.py)
+PyYAML==6.0.2       # tools/sync_from_mediaflow.py 전용

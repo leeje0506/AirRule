@@ -180,3 +180,5 @@ class Mapping(Base):
     id = Column(String(12), primary_key=True, default=gen_id)
     broadcaster_id = Column(String(12), ForeignKey("broadcasters.id", ondelete="CASCADE"), nullable=False)
     item_id = Column(String(12), ForeignKey("tech_items.id", ondelete="CASCADE"), nullable=False)
+    # config 에 적힌 순서가 곧 실행 순서라서 순번을 보존해야 한다.
+    sort_order = Column(Integer, default=0)

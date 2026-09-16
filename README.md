@@ -130,6 +130,17 @@ DB 서버가 필요 없습니다. 화면에 뜨는 데이터는 전부 리포 �
 서버가 뜰 때 메모리 SQLite에 이 내용을 채워 넣고, 내려가면 같이 사라집니다.
 파일 쓰기가 불가능한 서버리스에서도 그대로 돕니다.
 
+### 구성
+
+리포 루트 `vercel.json` 이 Vercel Services 로 두 서비스를 정의한다.
+`frontend/` 는 Vite 정적 빌드, `backend/` 는 FastAPI(`app.main:app`).
+`/api/*` 는 backend, 나머지는 frontend 로 간다.
+서비스는 **원본 경로를 그대로** 받으므로(`/api/auth/login` → `/api/auth/login`)
+FastAPI 라우트 prefix 를 바꿀 필요가 없다.
+
+> Services 는 권한이 필요한 기능이다. 계정에서 쓸 수 없으면 프론트/백엔드를
+> 별도 Vercel 프로젝트 두 개로 나누고, 프론트에서 백엔드 도메인으로 rewrite 한다.
+
 ### 환경변수
 
 | 이름 | 필수 | 설명 |
@@ -138,6 +149,15 @@ DB 서버가 필요 없습니다. 화면에 뜨는 데이터는 전부 리포 �
 | `AIRRULE_DATABASE_URL` | 아니오 | 비워두면 메모리 SQLite. 영속 저장이 필요할 때만 지정 |
 | `AIRRULE_READ_ONLY` | 아니오 | `auto`(기본) — 메모리 모드면 쓰기 차단 |
 | `VITE_AIRRULE_READ_ONLY` | 아니오 | `false` 로 두면 프론트 편집 UI가 살아납니다 (영속 DB와 함께 쓸 것) |
+
+`AIRRULE_SECRET_KEY` 값은 아래로 만든다.
+
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+배포 브랜치가 `main` 이 아니면 Vercel 의 Production Branch 설정을 바꾸거나,
+환경변수를 Preview 환경에도 등록해야 한다.
 
 ### 읽기 전용에 대하여
 

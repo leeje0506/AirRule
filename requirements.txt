@@ -1,7 +1,0 @@
-# Vercel Python 런타임이 리포 루트의 이 파일을 읽는다.
-# backend/requirements.txt 와 같은 내용을 유지할 것.
-fastapi==0.115.0
-pydantic==2.9.2
-sqlalchemy==2.0.35
-python-jose[cryptography]==3.3.0
-srt==3.5.3

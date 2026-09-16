@@ -3,7 +3,7 @@ AirRule 테스트 엔진 — mediaflow utils/subtitle/rules/* 원본 이식본.
 
 ⚠️  이 파일은 backend/tools/sync_from_mediaflow.py 가 생성합니다. 직접 수정하지 마세요.
     mediaflow 원본: validate_common.py, postprocess_common.py, postprocess_stage2.py, validate_stage2.py, postprocess_final.py
-    동기화 날짜: 2026-09-03
+    동기화 날짜: 2026-09-16
 
 subtitle_common 의존부는 아래 shim 으로 대체했습니다.
 필요 패키지: pip install srt
@@ -3376,26 +3376,86 @@ def postprocess_add_banner_subtitle(
     banner_sentence: str,
     banner_start: str = "00:00:00,000",
     banner_end: str = "00:05:00,000",
+    gap_before_sec: float = 0.0,
+    min_duration_sec: float = 0.0,
     **kwargs
 ) -> List[srt.Subtitle]:
     """
-    배너 싱크 추가 (JTBC/TVCS용)
-    
+    배너 싱크 추가
+
+    기본은 설정된 배너 시간(banner_start ~ banner_end)을 그대로 사용한다.
+    자막과 겹쳐도 그대로 둔다.
+
+    gap_before_sec가 0보다 크면, 배너 구간 안에서 시작하는 자막 중
+    가장 이른 자막의 시작 시각보다 gap_before_sec 앞을 배너 종료 시각으로
+    사용한다. 배너가 자막과 겹치지 않게 하기 위한 처리로, 방송사가
+    요구하는 경우에만 켠다. (2026-09 기준 KBS만 사용)
+
+    조정을 켠 경우에도 아래는 설정값을 그대로 사용하며, 배너와 자막이
+    겹친 상태로 납품된다.
+    - 첫 자막이 배너 시작과 동시에 시작 (0초 시작)
+    - 첫 자막이 배너 시작 + gap_before_sec 이내에 시작
+      (계산된 종료 시각이 배너 시작보다 앞서거나 같아지기 때문)
+    - 조정 결과 배너 노출 시간이 min_duration_sec 미만이 되는 경우
+      (min_duration_sec=0이면 이 제한을 적용하지 않음)
+
+    예) 배너 0:00:00~0:00:05, gap_before_sec=0 (기본)
+    - 첫 자막이 어디서 시작하든 -> 배너 0:00:00~0:00:05
+
+    예) 배너 0:00:00~0:00:05, gap_before_sec=0.1, min_duration_sec=0
+    - 첫 자막 0:00:03    -> 배너 0:00:00~0:00:02.900
+    - 첫 자막 0:00:00    -> 배너 0:00:00~0:00:05 (설정값, 겹침)
+    - 첫 자막 0:00:00.05 -> 배너 0:00:00~0:00:05 (설정값, 겹침)
+    - 첫 자막 0:00:00.15 -> 배너 0:00:00~0:00:00.050
+    - 배너 구간 안에 시작하는 자막 없음 -> 배너 0:00:00~0:00:05
+
+    예) 위와 같고 min_duration_sec=1.0
+    - 첫 자막 0:00:03    -> 배너 0:00:00~0:00:02.900 (2.9초, 하한 이상)
+    - 첫 자막 0:00:00.15 -> 배너 0:00:00~0:00:05 (0.05초는 하한 미달, 설정값)
+
     Args:
         subtitles: 자막 리스트
         banner_sentence: 배너 문장
         banner_start: 배너 시작 시간 (SRT 형식)
         banner_end: 배너 종료 시간 (SRT 형식)
-    
+        gap_before_sec: 첫 자막 시작 시각과 배너 종료 사이의 간격
+            (초, 기본 0 = 종료 시각을 조정하지 않음)
+        min_duration_sec: 조정 후 보장할 배너 최소 노출 시간
+            (초, 기본 0 = 제한 없음)
+
     Returns:
         배너가 추가된 자막 리스트
     """
     if not subtitles:
         return subtitles
-    
+
     start_td = parse_srt_time(banner_start)
     end_td = parse_srt_time(banner_end)
-    
+
+    # gap_before_sec가 설정된 방송사만 첫 자막 앞에서 배너를 끊는다
+    if gap_before_sec > 0:
+        gap_td = timedelta(seconds=gap_before_sec)
+        starts_in_banner = [
+            sub.start for sub in subtitles
+            if start_td <= sub.start <= end_td
+        ]
+
+        if starts_in_banner:
+            first_start = min(starts_in_banner)
+
+            # 배너 시작 + gap 이내에 시작하는 경우는 조정하지 않고 설정값을 유지한다
+            if first_start - gap_td > start_td:
+                adjusted_end = first_start - gap_td
+
+                # 조정 결과가 최소 노출 시간에 못 미치면 설정값을 유지한다
+                if min_duration_sec > 0:
+                    min_duration_td = timedelta(seconds=min_duration_sec)
+
+                    if adjusted_end - start_td >= min_duration_td:
+                        end_td = adjusted_end
+                else:
+                    end_td = adjusted_end
+
     # 배너 자막 생성
     banner_subtitle = srt.Subtitle(
         index=0,  # 임시 인덱스

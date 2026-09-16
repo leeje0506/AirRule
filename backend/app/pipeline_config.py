@@ -2,7 +2,7 @@
 config/config_subtitle.yml 전사본 (mediaflow 파이프라인 설정).
 
 ⚠️  이 파일은 backend/tools/sync_from_mediaflow.py 가 생성합니다. 직접 수정하지 마세요.
-    동기화 날짜: 2026-09-03
+    동기화 날짜: 2026-09-16
 
 - VALIDATION_PARAMS : 방송사별 글자 수 / 줄 수 / 바이트 / 가중치
 - STAGE1 / STAGE2   : 실행 순서 그대로의 후처리 · 검증 목록
@@ -245,7 +245,7 @@ FINAL = {'common': {'banner': False,
  'JTBC': {'banner': True,
           'banner_setting': {'banner_sentence': '장애인방송 VOD 제작지원 : 방송미디어통신위원회‧시청자미디어재단',
                              'banner_start': '00:00:00',
-                             'banner_end': '00:05:00'},
+                             'banner_end': '00:00:05'},
           'delivery_extension': '.srt',
           'remove_punctuation': True,
           'punctuation_list': ['.']},
@@ -263,7 +263,8 @@ FINAL = {'common': {'banner': False,
  'KBS': {'banner': True,
          'banner_setting': {'banner_sentence': '장애인방송 VOD 제작지원 : 방송미디어통신위원회‧시청자미디어재단',
                             'banner_start': '00:00:00',
-                            'banner_end': '00:00:05'},
+                            'banner_end': '00:00:05',
+                            'gap_before_sec': 0.1},
          'delivery_extension': '.srt',
          'remove_punctuation': True,
          'punctuation_list': ['.']}}

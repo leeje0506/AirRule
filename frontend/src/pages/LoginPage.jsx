@@ -82,25 +82,6 @@ export default function LoginPage() {
               로그인
             </button>
           </form>
-
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <p className="text-[10px] text-slate-400 font-medium text-center mb-3">테스트 계정</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { u: 'admin', p: 'admin123', label: '관리자' },
-                { u: 'dev1', p: 'dev123', label: '개발' },
-                { u: 'sub1', p: 'sub123', label: '자막' },
-              ].map((acc) => (
-                <button
-                  key={acc.u}
-                  onClick={() => { setUsername(acc.u); setPassword(acc.p); }}
-                  className="text-[10px] font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg py-2 px-3 transition-colors"
-                >
-                  {acc.label}
-                </button>
-              ))}
-            </div>
-          </div>
         </Card>
       </div>
     </div>

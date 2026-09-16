@@ -7,10 +7,11 @@ TechItem / Mapping 은 config_subtitle.yml 이 실제로 "무엇을 돌리나"�
 """
 from sqlalchemy.orm import Session
 
+from app.accounts import get_users
 from app.auth import hash_password
 from app.models import (
     Broadcaster, ItemTechLink, Mapping, PolicyCategory, PolicyItem, PolicyValue,
-    PolicyValueHistory, User, gen_id,
+    User, gen_id,
 )
 from app.seed_tech_items import build
 
@@ -279,11 +280,12 @@ def seed(db: Session):
     if db.query(User).first():
         return
 
-    # ── Users ──
+    # ── Users ── (AIRRULE_USERS 환경변수, 없으면 로컬 개발용 기본값)
     db.add_all([
-        User(id="u_admin", username="admin", hashed_password=hash_password("admin123"), name="관리자", role="admin"),
-        User(id="u_dev1", username="dev1", hashed_password=hash_password("dev123"), name="개발팀 김철수", role="dev"),
-        User(id="u_sub1", username="sub1", hashed_password=hash_password("sub123"), name="자막팀 이영희", role="subtitle"),
+        User(id=f"u_{u['username']}", username=u["username"],
+             hashed_password=hash_password(u["password"]),
+             name=u["name"], role=u["role"])
+        for u in get_users()
     ])
 
     # ── Broadcasters ──
@@ -292,7 +294,6 @@ def seed(db: Session):
 
     # ── Policy Matrix ──
     item_lookup = {}
-    value_lookup = {}
     for ci, (cat_name, items) in enumerate(POLICY_MATRIX):
         cat = PolicyCategory(id=gen_id(), name=cat_name, sort_order=ci)
         db.add(cat)
@@ -303,21 +304,9 @@ def seed(db: Session):
             db.flush()
             item_lookup[item_name] = item
             for code, (summary, detail) in vals.items():
-                pv = PolicyValue(id=gen_id(), item_id=item.id, broadcaster_id=BC[code],
-                                 summary=summary, detail=detail)
-                db.add(pv)
-                value_lookup[(item_name, code)] = pv
+                db.add(PolicyValue(id=gen_id(), item_id=item.id, broadcaster_id=BC[code],
+                                   summary=summary, detail=detail))
     db.flush()
-
-    # 변경 이력 데모 (전/후 값 보존)
-    demo = value_lookup.get(("글자 수", "DLIV"))
-    if demo:
-        db.add(PolicyValueHistory(id=gen_id(), value_id=demo.id, edited_by="u_sub1",
-                                  old_summary="18글자", new_summary="17글자", note="DLIV 규격 변경 반영"))
-    demo2 = value_lookup.get(("오버랩", "DLIV"))
-    if demo2:
-        db.add(PolicyValueHistory(id=gen_id(), value_id=demo2.id, edited_by="u_sub1",
-                                  old_summary="X", new_summary="O", note="오버랩 작업 규칙 추가"))
 
     # ── Tech Items + 방송사별 파이프라인 (config 순서 그대로) ──
     tech_items, pipelines = build()

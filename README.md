@@ -125,7 +125,7 @@ DB 서버가 필요 없습니다. 화면에 뜨는 데이터는 전부 리포 �
 |---|---|
 | 기술항목 · 실행 순서 · 방송사 | `backend/app/pipeline_config.py` (= mediaflow `config_subtitle.yml` 전사본) |
 | 정책 매트릭스 | `backend/app/seed.py` 의 `POLICY_MATRIX` |
-| 계정 | `backend/app/seed.py` |
+| 계정 | `AIRRULE_USERS` 환경변수 (로컬은 `backend/app/accounts.py` 기본값) |
 
 서버가 뜰 때 메모리 SQLite에 이 내용을 채워 넣고, 내려가면 같이 사라집니다.
 파일 쓰기가 불가능한 서버리스에서도 그대로 돕니다.
@@ -146,6 +146,7 @@ FastAPI 라우트 prefix 를 바꿀 필요가 없다.
 | 이름 | 필수 | 설명 |
 |---|---|---|
 | `AIRRULE_SECRET_KEY` | **예** | JWT 서명 키. 없으면 프로세스마다 임의 키를 써서 재배포·재시작 때 로그인이 풀립니다 |
+| `AIRRULE_USERS` | **예** | 로그인 계정 (JSON 배열). 없으면 배포 환경에서 기동을 거부합니다 |
 | `AIRRULE_DATABASE_URL` | 아니오 | 비워두면 메모리 SQLite. 영속 저장이 필요할 때만 지정 |
 | `AIRRULE_READ_ONLY` | 아니오 | `auto`(기본) — 메모리 모드면 쓰기 차단 |
 | `VITE_AIRRULE_READ_ONLY` | 아니오 | `false` 로 두면 프론트 편집 UI가 살아납니다 (영속 DB와 함께 쓸 것) |
@@ -155,6 +156,17 @@ FastAPI 라우트 prefix 를 바꿀 필요가 없다.
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
+
+`AIRRULE_USERS` 는 JSON 배열이다. `role` 은 `admin` | `dev` | `subtitle`
+(현재 배포는 읽기 전용이라 화면 표시용).
+
+```json
+[{"username":"someone","password":"...","name":"홍길동","role":"admin"}]
+```
+
+계정을 코드에 두면 공개 리포와 로그인 화면에 그대로 노출된다.
+`backend/app/accounts.py` 의 기본값은 로컬 개발 전용이며,
+Vercel(`VERCEL` 환경변수 존재) 에서 `AIRRULE_USERS` 없이 뜨면 기동을 거부한다.
 
 배포 브랜치가 `main` 이 아니면 Vercel 의 Production Branch 설정을 바꾸거나,
 환경변수를 Preview 환경에도 등록해야 한다.

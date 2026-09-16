@@ -380,7 +380,10 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 temp/
+
+# 산출물용 data 디렉터리 (소스 디렉터리는 아래에서 되살린다)
 data/
+!frontend/src/data/
 
 # Logs
 logs

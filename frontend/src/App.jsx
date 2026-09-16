@@ -7,6 +7,7 @@ import LibraryPage from './pages/LibraryPage';
 import MappingPage from './pages/MappingPage';
 import HistoryPage from './pages/HistoryPage';
 import TestPage from './pages/TestPage';
+import ValidatePage from './pages/ValidatePage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -31,6 +32,7 @@ function AppRoutes() {
         <Route path="policies" element={<PolicyPage />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="mapping" element={<MappingPage />} />
+        <Route path="validate" element={<ValidatePage />} />
         <Route path="test" element={<TestPage />} />
         <Route path="history" element={<HistoryPage />} />
       </Route>

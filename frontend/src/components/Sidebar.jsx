@@ -1,11 +1,12 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutGrid, Layers, GitBranch, History, Settings, LogOut, FlaskConical } from 'lucide-react';
+import { LayoutGrid, Layers, GitBranch, History, Settings, LogOut, FlaskConical, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const NAV = [
   { path: '/policies',  label: '방송사 정책',     icon: LayoutGrid,   desc: '방송사별 정책 매트릭스' },
   { path: '/library',   label: '마스터 라이브러리', icon: Layers,       desc: '후처리/검증 함수 관리' },
   { path: '/mapping',   label: '연결 찾기',       icon: GitBranch,    desc: '정책 ↔ 기술 연결' },
+  { path: '/validate',  label: '검증',            icon: ShieldCheck,  desc: '완성 자막 규격 검사' },
   { path: '/test',      label: '테스트',          icon: FlaskConical, desc: 'SRT 파이프라인 테스트' },
   { path: '/history',   label: '수정내역',         icon: History,      desc: '전체 변경 이력' },
 ];

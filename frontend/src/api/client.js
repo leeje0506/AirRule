@@ -95,4 +95,11 @@ export const testApi = {
     client.post('/test/run', { srt_text, broadcaster_id, pipeline, params_override }).then((r) => r.data),
 };
 
+// ── Validation (검증 전용 — 후처리 없이 검증만) ──
+export const validateApi = {
+  items: (broadcasterId) => client.get(`/validate/items/${broadcasterId}`).then((r) => r.data),
+  run: (srt_text, broadcaster_id, items = [], params_override = {}) =>
+    client.post('/validate/run', { srt_text, broadcaster_id, items, params_override }).then((r) => r.data),
+};
+
 export default client;

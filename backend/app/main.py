@@ -8,6 +8,7 @@ from app.routes_policies import router as policies_router
 from app.routes_tech_items import router as tech_items_router
 from app.routes_mappings import router as mappings_router
 from app.routes_test import router as test_router
+from app.routes_validate import router as validate_router
 from app.routes_links import router as links_router
 from app.seed import seed
 
@@ -28,6 +29,7 @@ app.include_router(policies_router)
 app.include_router(tech_items_router)
 app.include_router(mappings_router)
 app.include_router(test_router)
+app.include_router(validate_router)
 app.include_router(links_router)
 
 

@@ -2,9 +2,8 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic==2.9.2
 sqlalchemy==2.0.35
-aiosqlite==0.20.0
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.9
-srt==3.5.3          # 테스트 파이프라인 엔진(app/engine/rules.py)
-PyYAML==6.0.2       # tools/sync_from_mediaflow.py 전용
+srt==3.5.3
+
+# 개발 도구 전용 (배포에는 불필요)
+PyYAML==6.0.2       # tools/sync_from_mediaflow.py

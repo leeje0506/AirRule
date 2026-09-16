@@ -84,11 +84,6 @@ export const mappingApi = {
     client.put(`/mappings/${broadcasterId}`, { item_ids: itemIds }).then((r) => r.data),
 };
 
-// ── History ──
-export const historyApi = {
-  all: () => client.get('/history').then((r) => r.data),
-};
-
 // ── Test Pipeline ──
 export const testApi = {
   run: (srt_text, broadcaster_id, pipeline, params_override = {}) =>

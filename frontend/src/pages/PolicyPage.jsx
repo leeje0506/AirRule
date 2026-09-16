@@ -98,7 +98,7 @@ function CellEditModal({ open, onClose, item, broadcaster, value, onSaved }) {
 
       <label className="block mb-2">
         <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">
-          변경 사유 <span className="text-slate-400 normal-case">(수정내역에 기록)</span>
+          변경 사유 <span className="text-slate-400 normal-case">(변경 이력에 기록)</span>
         </span>
         <input
           type="text"

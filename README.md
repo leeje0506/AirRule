@@ -116,3 +116,41 @@ npm run dev
 | GET    | /api/mappings/:broadcaster_id     | 매핑 조회          | 인증      |
 | PUT    | /api/mappings/:broadcaster_id     | 매핑 수정          | 인증      |
 | GET    | /api/history                      | 전체 수정내역      | 인증      |
+
+## 배포 (Vercel)
+
+DB 서버가 필요 없습니다. 화면에 뜨는 데이터는 전부 리포 안의 파일에서 파생됩니다.
+
+| 데이터 | 원천 |
+|---|---|
+| 기술항목 · 실행 순서 · 방송사 | `backend/app/pipeline_config.py` (= mediaflow `config_subtitle.yml` 전사본) |
+| 정책 매트릭스 | `backend/app/seed.py` 의 `POLICY_MATRIX` |
+| 계정 | `backend/app/seed.py` |
+
+서버가 뜰 때 메모리 SQLite에 이 내용을 채워 넣고, 내려가면 같이 사라집니다.
+파일 쓰기가 불가능한 서버리스에서도 그대로 돕니다.
+
+### 환경변수
+
+| 이름 | 필수 | 설명 |
+|---|---|---|
+| `AIRRULE_SECRET_KEY` | **예** | JWT 서명 키. 없으면 프로세스마다 임의 키를 써서 재배포·재시작 때 로그인이 풀립니다 |
+| `AIRRULE_DATABASE_URL` | 아니오 | 비워두면 메모리 SQLite. 영속 저장이 필요할 때만 지정 |
+| `AIRRULE_READ_ONLY` | 아니오 | `auto`(기본) — 메모리 모드면 쓰기 차단 |
+| `VITE_AIRRULE_READ_ONLY` | 아니오 | `false` 로 두면 프론트 편집 UI가 살아납니다 (영속 DB와 함께 쓸 것) |
+
+### 읽기 전용에 대하여
+
+정책 셀 수정 · 기술항목 편집 · 연결 추가 · 매핑 저장은 현재 막혀 있습니다.
+화면에서는 버튼이 감춰지고, 백엔드는 503을 돌려줍니다. 저장이 성공한 것처럼
+보였다가 재시작 때 조용히 사라지는 상황을 막기 위한 것입니다.
+
+규칙을 바꾸려면 mediaflow config를 고친 뒤 동기화하고 재배포합니다.
+
+```bash
+python backend/tools/sync_from_mediaflow.py /path/to/mediaflow
+python backend/tools/verify_function_guide.py    # 화면 설명이 엔진과 맞는지 확인
+```
+
+편집이 필요해지면 `AIRRULE_DATABASE_URL` 에 Postgres를 주고
+`VITE_AIRRULE_READ_ONLY=false` 로 두면 기존 편집 기능이 그대로 살아납니다.

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ItemTechLink, PolicyItem, TechItem, User, gen_id
 from app.schemas import ItemTechLinkCreate, ItemTechLinkOut, TechItemOut, PolicyItemOut
+from app.readonly import guard_write
 from app.auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/links", tags=["links"])
@@ -41,6 +42,7 @@ def policy_by_tech_item(tech_item_id: str, db: Session = Depends(get_db), _=Depe
 
 @router.post("", response_model=ItemTechLinkOut, status_code=201)
 def create_link(body: ItemTechLinkCreate, db: Session = Depends(get_db), user: User = Depends(require_role("dev"))):
+    guard_write()
     item = db.query(PolicyItem).filter(PolicyItem.id == body.policy_item_id).first()
     if not item:
         raise HTTPException(404, "Policy item not found")
@@ -66,6 +68,7 @@ def create_link(body: ItemTechLinkCreate, db: Session = Depends(get_db), user: U
 
 @router.delete("/{link_id}")
 def delete_link(link_id: str, db: Session = Depends(get_db), user: User = Depends(require_role("dev"))):
+    guard_write()
     link = db.query(ItemTechLink).filter(ItemTechLink.id == link_id).first()
     if not link:
         raise HTTPException(404, "Link not found")

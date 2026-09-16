@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import union_all, literal_column, select
 from app.database import get_db
-from app.models import Mapping, TechItem, TechItemHistory
+from app.models import Mapping, TechItem
 from app.schemas import MappingUpdate, MappingOut, TechItemOut
+from app.readonly import guard_write
 from app.auth import get_current_user
 from app.models import gen_id
 
@@ -35,6 +36,7 @@ def get_mapping(broadcaster_id: str, db: Session = Depends(get_db), _=Depends(ge
 @router.put("/api/mappings/{broadcaster_id}", response_model=MappingOut)
 def update_mapping(broadcaster_id: str, body: MappingUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     # Clear existing
+    guard_write()
     db.query(Mapping).filter(Mapping.broadcaster_id == broadcaster_id).delete()
     # Insert new — 보내온 순서를 그대로 실행 순서로 저장
     for order, item_id in enumerate(body.item_ids):
@@ -42,29 +44,3 @@ def update_mapping(broadcaster_id: str, body: MappingUpdate, db: Session = Depen
     db.commit()
 
     return MappingOut(broadcaster_id=broadcaster_id, items=_items_in_order(db, body.item_ids))
-
-
-# ── Tech Item History ────────────────────────────────────────────
-#   (정책 이력은 /api/policies/history 에서 별도로 제공)
-
-@router.get("/api/history")
-def all_history(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    tech_h = (
-        db.query(TechItemHistory)
-        .order_by(TechItemHistory.edited_at.desc())
-        .all()
-    )
-
-    result = []
-    for h in tech_h:
-        result.append({
-            "id": h.id,
-            "kind": "tech",
-            "ref_id": h.item_id,
-            "edited_by": h.edited_by,
-            "edited_at": h.edited_at.isoformat() if h.edited_at else None,
-            "summary": h.summary,
-        })
-
-    result.sort(key=lambda x: x["edited_at"] or "", reverse=True)
-    return result

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
+import os
 import secrets
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
@@ -8,7 +9,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 
-SECRET_KEY = "airrule-secret-change-in-production"
+# 배포 시 AIRRULE_SECRET_KEY 를 반드시 설정한다.
+# 없으면 프로세스마다 임의 키를 쓰므로 재시작할 때 로그인이 풀린다
+# (기본값을 코드에 박아두면 공개 URL 에서 토큰 위조가 가능해진다).
+SECRET_KEY = os.environ.get("AIRRULE_SECRET_KEY") or secrets.token_hex(32)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 

@@ -5,7 +5,6 @@ import AppLayout from './pages/AppLayout';
 import PolicyPage from './pages/PolicyPage';
 import LibraryPage from './pages/LibraryPage';
 import MappingPage from './pages/MappingPage';
-import HistoryPage from './pages/HistoryPage';
 import TestPage from './pages/TestPage';
 import ValidatePage from './pages/ValidatePage';
 
@@ -34,7 +33,6 @@ function AppRoutes() {
         <Route path="mapping" element={<MappingPage />} />
         <Route path="validate" element={<ValidatePage />} />
         <Route path="test" element={<TestPage />} />
-        <Route path="history" element={<HistoryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

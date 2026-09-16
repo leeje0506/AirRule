@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import TechItem, TechItemHistory, User
 from app.schemas import TechItemCreate, TechItemUpdate, TechItemOut, TechItemHistoryOut
+from app.readonly import guard_write
 from app.auth import get_current_user, require_role
 from app.models import gen_id, utcnow
 
@@ -24,6 +25,7 @@ def get_tech_item(item_id: str, db: Session = Depends(get_db), _=Depends(get_cur
 
 @router.post("", response_model=TechItemOut, status_code=201)
 def create_tech_item(body: TechItemCreate, db: Session = Depends(get_db), user: User = Depends(require_role("dev"))):
+    guard_write()
     item = TechItem(
         id=gen_id(),
         type=body.type,
@@ -45,6 +47,7 @@ def create_tech_item(body: TechItemCreate, db: Session = Depends(get_db), user: 
 
 @router.put("/{item_id}", response_model=TechItemOut)
 def update_tech_item(item_id: str, body: TechItemUpdate, db: Session = Depends(get_db), user: User = Depends(require_role("dev"))):
+    guard_write()
     item = db.query(TechItem).filter(TechItem.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")

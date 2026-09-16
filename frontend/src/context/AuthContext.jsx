@@ -44,11 +44,15 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  const canEditPolicy = user?.role === 'subtitle' || user?.role === 'admin';
-  const canEditTech = user?.role === 'dev' || user?.role === 'admin';
+  // 읽기 전용 배포에서는 편집 UI를 내린다.
+  // 서버가 메모리 DB로 뜨므로 저장해도 재시작하면 사라지고, 백엔드도 503으로 막는다.
+  // 영속 DB를 붙일 때 VITE_AIRRULE_READ_ONLY=false 로 되살린다.
+  const readOnly = import.meta.env.VITE_AIRRULE_READ_ONLY !== 'false';
+  const canEditPolicy = !readOnly && (user?.role === 'subtitle' || user?.role === 'admin');
+  const canEditTech = !readOnly && (user?.role === 'dev' || user?.role === 'admin');
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, canEditPolicy, canEditTech }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, readOnly, canEditPolicy, canEditTech }}>
       {children}
     </AuthContext.Provider>
   );

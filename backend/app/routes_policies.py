@@ -10,6 +10,7 @@ from app.schemas import (
     PolicyItemOut, PolicyItemCreate, PolicyItemUpdate,
     PolicyValueOut, PolicyValueUpsert, PolicyValueHistoryOut,
 )
+from app.readonly import guard_write
 from app.auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
@@ -30,6 +31,7 @@ def get_matrix(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 @router.post("/categories", response_model=PolicyCategoryOut, status_code=201)
 def create_category(body: PolicyCategoryCreate, db: Session = Depends(get_db), user: User = Depends(require_role("subtitle"))):
+    guard_write()
     cat = PolicyCategory(id=gen_id(), name=body.name, sort_order=body.sort_order)
     db.add(cat)
     db.commit()
@@ -53,6 +55,7 @@ def update_category(cat_id: str, body: PolicyCategoryUpdate, db: Session = Depen
 
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: str, db: Session = Depends(get_db), user: User = Depends(require_role("subtitle"))):
+    guard_write()
     cat = db.query(PolicyCategory).filter(PolicyCategory.id == cat_id).first()
     if not cat:
         raise HTTPException(404, "Category not found")
@@ -65,6 +68,7 @@ def delete_category(cat_id: str, db: Session = Depends(get_db), user: User = Dep
 
 @router.post("/items", response_model=PolicyItemOut, status_code=201)
 def create_item(body: PolicyItemCreate, db: Session = Depends(get_db), user: User = Depends(require_role("subtitle"))):
+    guard_write()
     cat = db.query(PolicyCategory).filter(PolicyCategory.id == body.category_id).first()
     if not cat:
         raise HTTPException(404, "Category not found")
@@ -99,6 +103,7 @@ def update_item(item_id: str, body: PolicyItemUpdate, db: Session = Depends(get_
 
 @router.delete("/items/{item_id}")
 def delete_item(item_id: str, db: Session = Depends(get_db), user: User = Depends(require_role("subtitle"))):
+    guard_write()
     item = db.query(PolicyItem).filter(PolicyItem.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")
@@ -111,6 +116,7 @@ def delete_item(item_id: str, db: Session = Depends(get_db), user: User = Depend
 
 @router.put("/values", response_model=PolicyValueOut)
 def upsert_value(body: PolicyValueUpsert, db: Session = Depends(get_db), user: User = Depends(require_role("subtitle"))):
+    guard_write()
     item = db.query(PolicyItem).filter(PolicyItem.id == body.item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")

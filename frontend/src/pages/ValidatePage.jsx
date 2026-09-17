@@ -34,6 +34,7 @@ const PARAM_KO = {
   max_lines_with_hyphen: '하이픈이면 최대 줄 수',
   min_duration_sec: '최소 길이(초)',
   gap_sec: '최소 간격(초)',
+  allow_number_range: '숫자 범위 허용',
 };
 
 // 글자 수·줄 수 한도는 항목이 아니라 방송사 규격(validation_params)에서 온다.
@@ -48,7 +49,8 @@ function effectiveParams(item, vp) {
 function readableParams(params) {
   return Object.entries(params || {})
     .filter(([k]) => PARAM_KO[k] != null)
-    .map(([k, v]) => `${PARAM_KO[k]} ${v}`);
+    // 불리언은 "숫자 범위 허용 true" 대신 예/아니오로 읽히게 한다
+    .map(([k, v]) => (typeof v === 'boolean' ? `${PARAM_KO[k]} ${v ? '예' : '아니오'}` : `${PARAM_KO[k]} ${v}`));
 }
 
 // 이 검증이 무엇을 보는지 — 화면에 검증해 둔 설명(FUNCTION_GUIDE)을 우선 쓰고,

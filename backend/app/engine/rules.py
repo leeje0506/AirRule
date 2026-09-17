@@ -3366,6 +3366,59 @@ def validate_line_count_allow_hyphen(
     # 그 외 모두 오류
     return True
 
+def validate_tilde_remains(
+    content: str,
+    allow_number_range: bool = True,
+    **kwargs
+) -> bool:
+    """
+    물결(~) 잔존 검증
+
+    티빙은 노래/음향을 음표(♪)로 표기하므로, 작업자가 사용한 물결이
+    후처리에서 정리되지 않고 남아 있으면 재작업 대상으로 잡는다.
+
+    검사 대상 문자:
+        ASCII 물결(~)뿐 아니라 전각 물결(～), 물결 대시(〜),
+        물결 연산자(∼)도 함께 본다.
+        후처리 함수들은 ASCII ~만 다루므로 전각 계열은 그대로 남는다.
+
+    예외:
+        allow_number_range가 True면 숫자 사이 물결은 정상으로 본다.
+        범위 표현이므로 노래 표기와 무관하다.
+        앞뒤 공백도 함께 허용한다. ("1~2", "3 ~ 4" 모두 정상)
+
+    예시 (allow_number_range=True):
+    - "그리워라~"       → True  (오류)
+    - "~ 그리워라"      → True  (오류)
+    - "♪ 그리워라 ♪"   → False (정상)
+    - "1~2번 출구"      → False (정상, 범위 표현)
+    - "3 ~ 4시에 만나"  → False (정상, 범위 표현)
+    - "그리워라～"      → True  (오류, 전각 물결)
+    - "안녕하세요"      → False (정상)
+
+    Args:
+        content: 자막 내용
+        allow_number_range: 숫자 사이 물결을 허용할지 여부 (기본 True)
+
+    Returns:
+        True: 물결이 남아있음 (오류)
+        False: 정상
+    """
+    if not content:
+        return False
+
+    tilde_class = "[~～〜∼]"
+
+    text = content
+
+    if allow_number_range:
+        # 숫자 사이 물결은 범위 표현이므로 검사 대상에서 제외한다.
+        # 숫자는 소비하지 않고(lookbehind/lookahead) 물결만 지워
+        # "1~2~3" 처럼 연속된 범위도 모두 걸러지게 한다.
+        text = re.sub(rf"(?<=\d)\s*{tilde_class}\s*(?=\d)", "", text)
+
+    return bool(re.search(tilde_class, text))
+
 
 # ============================================================
 # 최종 납품 후처리  (postprocess_final.py)

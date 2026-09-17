@@ -378,6 +378,17 @@ export const FUNCTION_GUIDE = {
       { label: '태그 겹침', input: '[웃음] / 반가워', fail: true },
     ],
   },
+  validate_tilde_remains: {
+    summary: '노래·음향을 음표로 표기하는 방송사(TVING)에서 물결(~)이 정리되지 않고 남아 있으면 검출합니다. 전각 물결(～)·물결 대시(〜)·물결 연산자(∼)도 함께 봅니다. 숫자 사이 물결은 범위 표현이라 정상입니다.',
+    cases: [
+      { label: '음표 표기 OK', input: '♪ 그리워라 ♪', fail: false },
+      { label: '숫자 범위 OK', input: '1~2번 출구', fail: false },
+      { label: '공백 낀 범위 OK', input: '3 ~ 4시에 만나', fail: false },
+      { label: '문장 끝 물결', input: '그리워라~', fail: true },
+      { label: '문장 앞 물결', input: '~ 그리워라', fail: true },
+      { label: '전각 물결', input: '그리워라～', fail: true },
+    ],
+  },
   validate_overlapped_accumulated_lines: {
     summary: 'DLIV 규칙: 연속으로 겹치는 그룹의 누적 줄 수가 3줄을 넘으면 그룹 전체를 검출합니다. 2개 이상 겹칠 때만 발동합니다.',
     cases: [

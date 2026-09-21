@@ -412,3 +412,5 @@ dist-ssr
 
 # DB
 backend/airrule.db
+# 수집한 자막 (MBC 저작물, 커밋하지 않음)
+docs/captions/

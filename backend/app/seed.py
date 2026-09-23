@@ -88,8 +88,9 @@ POLICY_MATRIX = [
             "TVNG": ("—", ""), "KBS": ("—", ""),
         }),
         ("최소 자막 길이", "자막 하나가 노출되는 최소 시간", {
-            "DLIV": ("1초", "postprocess_adjust_short_sync 로 연장하되 다음 자막과의 간격이 우선이라 "
-                            "1초 미만으로 남을 수 있고, validate_sync_short_duration 이 받아낸다"),
+            "DLIV": ("—", "최소 길이 요구 없음. 다만 파이프라인에는 1초 규칙이 남아 있어 "
+                          "postprocess_adjust_short_sync 로 연장하고 "
+                          "validate_sync_short_duration 이 1초 미만을 잡는다"),
             "LGHV": ("—", ""), "SKBB": ("—", ""), "JTBC": ("—", ""),
             "TVCS": ("—", ""), "TVNG": ("—", ""), "KBS": ("—", ""),
         }),

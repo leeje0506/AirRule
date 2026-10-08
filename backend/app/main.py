@@ -10,6 +10,7 @@ from app.routes_mappings import router as mappings_router
 from app.routes_test import router as test_router
 from app.routes_validate import router as validate_router
 from app.routes_links import router as links_router
+from app.routes_captions import router as captions_router
 from app.seed import seed
 
 app = FastAPI(title="AirRule API", version="1.0.0")
@@ -31,6 +32,7 @@ app.include_router(mappings_router)
 app.include_router(test_router)
 app.include_router(validate_router)
 app.include_router(links_router)
+app.include_router(captions_router)
 
 
 @app.on_event("startup")

@@ -412,5 +412,5 @@ dist-ssr
 
 # DB
 backend/airrule.db
-# 수집한 자막 (MBC 저작물, 커밋하지 않음)
-docs/captions/
+# 작업 자료(정산 엑셀·수집 자막 등) — 커밋하지 않음. 쓰는 스크립트는 backend/app/tools/
+docs/

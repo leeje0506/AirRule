@@ -1,6 +1,6 @@
 """
 프로그램 찾기 — 방송사 다시보기에서 프로그램 검색 → 회차별 자막 유무 → 자막 받기.
-지원: KBS·MBC·SBS·JTBC·TV조선·채널A·MBN·TVING(예전 작품) (자막 받기), 웨이브·쿠팡플레이 (유무만).
+지원: KBS·MBC·SBS·JTBC·TV조선·채널A·MBN·TVING (자막 받기 — TVING 최근 작품은 유무만), 웨이브·쿠팡플레이 (유무만).
 
 CLI 판: backend/tools/captions/ (대량 수집·통합본 분할).
 버셀 무료 플랜 아끼기:
@@ -56,6 +56,38 @@ def _pmap(fn, items):
     # ponytail: 고정 8스레드 — 회차가 수백 개면 함수 시간 한도(버셀) 근처까지 갈 수 있음
     with ThreadPoolExecutor(8) as ex:
         return list(ex.map(fn, items))
+
+
+# 가드: 회차마다 자막을 확인하는 사이트(JTBC·MBN·TVING·웨이브)는 최근 N화만 확인한다.
+# 700화짜리 MBN 프로그램 하나가 CPU 6.5초·20초 걸려 버셀 시간 한도에 닿을 수 있어서. 오래된 회차는 목록만.
+CHECK_LIMIT = 200
+SKIP = "skip"
+SKIP_NOTE = f"회차가 많아 최근 {CHECK_LIMIT}화만 확인"
+
+
+def _check_recent(fn, items):
+    """items 는 최신순. 앞 CHECK_LIMIT 개만 fn 으로 확인하고 나머지는 SKIP."""
+    return _pmap(fn, items[:CHECK_LIMIT]) + [SKIP] * max(0, len(items) - CHECK_LIMIT)
+
+
+# 가드: 회차 목록은 최근 LIST_LIMIT 화까지만 (인간극장 같은 수천 회 프로그램이 쪽을 순서대로 받다 시간 초과).
+# 첫 쪽에서 전체 쪽수를 읽고 나머지는 동시에, 실패한 쪽은 한 번 더 시도.
+LIST_LIMIT = 1000
+
+
+def _pages(fetch, first, total_pages, per_page):
+    """first = 1쪽 결과. 2쪽부터 최근 LIST_LIMIT 화가 되는 쪽까지 동시에 받아 [1쪽, 2쪽, …]. 반환 (쪽들, 잘렸는지)."""
+    want = min(int(total_pages or 1), -(-LIST_LIMIT // per_page))
+
+    def safe(n):
+        for _ in range(2):
+            try:
+                return fetch(n)
+            except Exception:
+                pass
+        return None
+    rest = _pmap(safe, range(2, want + 1))
+    return [first] + [r for r in rest if r is not None], want < int(total_pages or 1)
 
 
 _CACHE = {}
@@ -173,14 +205,14 @@ def jtbc_episodes(url):
         seen.update(new)
         page += 1
     items = list(seen.items())
-    vos = _pmap(lambda it: _jtbc_vo(it[0]), items)
+    vos = _check_recent(lambda it: _jtbc_vo(it[0]), items)   # 다시보기 목록은 최신순
     out = []
     for (_, label), vo in zip(items, vos):
         got = isinstance(vo, tuple)
         out.append({"key": vo[0] if got else "", "label": label, "num": _num(label),
                     "caption": True if got else (False if vo is False else None),   # None = 확인 불가
                     "format": vo[1] if got else None, "url": vo[2] if got else None,
-                    **({"note": "19세 — 로그인 필요"} if vo == "login" else {})})
+                    **({"note": "19세 — 로그인 필요"} if vo == "login" else {"note": SKIP_NOTE} if vo == SKIP else {})})
     return out
 
 
@@ -233,10 +265,10 @@ def tving_episodes(pid):
             return True, f"https://image-pip.tving.com/{m.group(1)}/{m.group(2)}_KO_CC.vtt" if m else None
         except Exception:
             return None, None
-    flags = _pmap(cc, eps)
-    return [{"key": url or "", "label": f"{e['episode']['frequency']}회", "num": e["episode"]["frequency"], "caption": f,
-             "format": "vtt" if url else None, "url": url,
-             **({} if url or not f else {"note": "주소 확인 불가"})}
+    flags = [(None, SKIP) if x == SKIP else x for x in _check_recent(cc, eps)]   # order=new → 최신순
+    return [{"key": "" if url == SKIP else url or "", "label": f"{e['episode']['frequency']}회", "num": e["episode"]["frequency"],
+             "caption": f, "format": "vtt" if url and url != SKIP else None, "url": None if url == SKIP else url,
+             **({"note": SKIP_NOTE} if url == SKIP else {} if url or not f else {"note": "주소 확인 불가"})}
             for e, (f, url) in zip(eps, flags)]
 
 
@@ -264,10 +296,13 @@ def kbs_search(q):
 def kbs_episodes(pc):
     if not re.fullmatch(r"[\w-]+", pc):
         raise HTTPException(400, "잘못된 프로그램 코드")
-    eps, page = [], 1
-    while True:   # page_size 최대 40
-        d = json.loads(_get("https://static.api.kbs.co.kr/mediafactory/v1/contents?" + urllib.parse.urlencode(
-            dict(program_code=pc, sort_option="program_planned_date|desc", page=page, page_size=40))))
+    def fetch(n):   # page_size 최대 40, 최신순
+        return json.loads(_get("https://static.api.kbs.co.kr/mediafactory/v1/contents?" + urllib.parse.urlencode(
+            dict(program_code=pc, sort_option="program_planned_date|desc", page=n, page_size=40))))
+    first = fetch(1)
+    pages, limited = _pages(fetch, first, first.get("page_count"), 40)
+    eps = []
+    for d in pages:
         for e in d.get("data") or []:
             if e.get("descriptive_video_service_yn") == "Y":   # 화면해설판은 빼기
                 continue
@@ -275,9 +310,7 @@ def kbs_episodes(pc):
             no = e.get("program_sequence_number")
             eps.append({"key": url or "", "label": f"{no}회" if no else e.get("program_id", ""), "num": _num(str(no or "")),
                         "caption": bool(url), "format": _ext("", url) if url else None, "url": url})
-        if page >= int(d.get("page_count") or 1):
-            return eps
-        page += 1
+    return eps, limited
 
 
 def kbs_raw(url):
@@ -301,15 +334,26 @@ def _sbs_url(pid, mid):
 def sbs_episodes(pid):
     if not re.fullmatch(r"\w+", pid):
         raise HTTPException(400, "잘못된 프로그램 코드")
-    items, page = [], 1
-    while True:   # 페이지당 최대 300
-        m = json.loads(_get(f"https://static.apis.sbs.co.kr/allvod-api/media_sub/vod/{pid}?" + urllib.parse.urlencode(
-            {"jwt-token": "", "page": page, "sort": "new", "free_yn": "", "srs_id": "", "srs_year": ""})))["media"]
-        got = m.get("items") or []
-        items += got
-        if not got or len(items) >= int(m.get("tot_cnt") or 0):
-            break
-        page += 1
+    def fetch(n):   # 쪽당 최대 300, 최신순
+        return json.loads(_get(f"https://static.apis.sbs.co.kr/allvod-api/media_sub/vod/{pid}?" + urllib.parse.urlencode(
+            {"jwt-token": "", "page": n, "sort": "new", "free_yn": "", "srs_id": "", "srs_year": ""})))["media"]
+    mid = lambda e: e["mda_id"]["items"][0]["id"]   # noqa: E731
+    first = fetch(1)
+    got = first.get("items") or []
+    tot = int(first.get("tot_cnt") or 0)
+    items = {mid(e): e for e in got}
+    if len(got) < tot:
+        # SBS 는 쪽마다 300개를 주지만 다음 쪽은 몇 개(런닝맨 28)만 밀린다 — 1·2쪽을 비교해 밀리는 폭을 구하고
+        # 최근 LIST_LIMIT 개를 덮는 쪽까지만 동시에 받아 중복 제거.
+        second = fetch(2).get("items") or []
+        ids = [mid(e) for e in got]
+        step = ids.index(mid(second[0])) if second and mid(second[0]) in ids else len(got)
+        step = step or len(got)
+        need = 2 + -(-max(0, min(tot, LIST_LIMIT) - len(got) - step) // step)
+        for e in second + [e for m in _pmap(lambda n: fetch(n).get("items") or [], range(3, need + 1)) for e in m]:
+            items.setdefault(mid(e), e)
+    limited = tot > LIST_LIMIT
+    items = list(items.values())
     out = []
     for e in items:
         mid = e["mda_id"]["items"][0]["id"]
@@ -317,7 +361,7 @@ def sbs_episodes(pid):
         cap = e.get("vod_ctt_yn") == "Y"
         out.append({"key": f"{pid}/{mid}", "label": f"{no}회" if no else e.get("brd_beg_dd", ""), "num": _num(str(no or "")),
                     "caption": cap, "format": "vtt" if cap else None, "url": _sbs_url(pid, mid) if cap else None})
-    return out
+    return out, limited
 
 
 def sbs_raw(key):
@@ -339,18 +383,19 @@ def tvc_search(q):
 def tvc_episodes(pid):
     if not re.fullmatch(r"C\d+", pid):
         raise HTTPException(400, "잘못된 프로그램 코드")
-    eps, page = [], 1
-    while True:
-        r = json.loads(_get("https://vod.tvchosun.com/vod/getVodReplayOrderByPagingInfo.cstv", data=dict(
-            prog_id=pid, order_type="latest", page=page, search_text="", year="all")))[0]
+    def fetch(n):   # 쪽당 10, 최신순
+        return json.loads(_get("https://vod.tvchosun.com/vod/getVodReplayOrderByPagingInfo.cstv", data=dict(
+            prog_id=pid, order_type="latest", page=n, search_text="", year="all")))[0]
+    first = fetch(1)
+    pages, limited = _pages(fetch, first, first["replayTotalPages"], 10)
+    eps = []
+    for r in pages:
         for e in r["prog"]:
             cap, no = e["vtt_yn"] == "Y", e["epis_sub_cnt"]
             eps.append({"key": f"{pid}/{no}", "label": f"{no}회", "num": _num(str(no)), "caption": cap,
                         "format": "vtt" if cap else None,
                         "url": f"https://img.tvchosun.com/upload_img/vtt/{pid}/{pid}_{no}.vtt" if cap else None})
-        if page >= int(r["replayTotalPages"] or 1):
-            return eps
-        page += 1
+    return eps, limited
 
 
 def tvc_raw(key):
@@ -427,23 +472,25 @@ def mbn_episodes(prog):
     m = re.search(rf"programContents/{prog}/(\d+)", _get(f"{MBN}/vod/programMain/{prog}"))
     if not m:
         return []
-    items, page = {}, 1
-    while True:
-        h = _get(f"{MBN}/lib/module/program/getProgramReviewList_E.v2.php", data=dict(
-            menuType=50, menuCode=m.group(1), progCode=prog, page=page, searchKey="", searchWord=""))
-        new = [(seq, t) for seq, t in re.findall(rf'previewlist/{prog}/\d+/(\d+)">\s*([^<]+?)\s*</a>', h) if seq not in items]
-        if not new:
-            break
-        items.update(new)
-        page += 1
+    def page(n):
+        return _get(f"{MBN}/lib/module/program/getProgramReviewList_E.v2.php", data=dict(
+            menuType=50, menuCode=m.group(1), progCode=prog, page=n, searchKey="", searchWord=""))
+    first = page(1)   # 전체 쪽수는 goPage('N') 로 나온다 — 나머지 쪽은 동시에
+    last = max([int(n) for n in re.findall(r"goPage\('(\d+)'\)", first)] or [1])
+    items = {}
+    for h in [first] + _pmap(page, range(2, last + 1)):
+        items.update((seq, t) for seq, t in re.findall(rf'previewlist/{prog}/\d+/(\d+)">\s*([^<]+?)\s*</a>', h)
+                     if seq not in items)
 
     def sub(seq):
         try:
             return _mbn_info(seq).get("subtitle_path") or None
         except Exception:
             return None
-    subs = _pmap(sub, list(items))
-    return [{"key": seq, "label": t, "num": _num(t), "caption": bool(u), "format": _ext("", u) if u else None, "url": u}
+    subs = _check_recent(sub, list(items))   # 다시보기 목록 1쪽이 최신
+    return [{"key": seq, "label": t, "num": _num(t), "caption": None, "format": None, "url": None, "note": SKIP_NOTE}
+            if u == SKIP else
+            {"key": seq, "label": t, "num": _num(t), "caption": bool(u), "format": _ext("", u) if u else None, "url": u}
             for (seq, t), u in zip(items.items(), subs)]
 
 
@@ -483,7 +530,7 @@ def wavve_episodes(pid):
         raise HTTPException(400, "잘못된 프로그램 코드")
     eps, off = [], 0
     while True:
-        page = _wavve(f"/fz/vod/programs/{pid}/contents", orderby="old", limit=50, offset=off)["cell_toplist"]["celllist"]
+        page = _wavve(f"/fz/vod/programs/{pid}/contents", orderby="new", limit=50, offset=off)["cell_toplist"]["celllist"]
         if not page:
             break
         eps += page
@@ -495,9 +542,10 @@ def wavve_episodes(pid):
             return d.get("isCC") == "y" or any(x.get("subtitleLang", "").startswith("ko") for x in d.get("subtitles") or [])
         except Exception:
             return None
-    flags = _pmap(cc, eps)
+    flags = _check_recent(cc, eps)
     return [{"key": "", "label": f"{e.get('episodenumber')}회" if e.get("episodenumber") else e.get("episodetitle", ""),
-             "num": _num(str(e.get("episodenumber") or "")), "caption": f, "format": None, "url": None}
+             "num": _num(str(e.get("episodenumber") or "")), "caption": None if f == SKIP else f, "format": None, "url": None,
+             **({"note": SKIP_NOTE} if f == SKIP else {})}
             for e, f in zip(eps, flags)]
 
 
@@ -546,7 +594,7 @@ SOURCES = {
     "tvchosun": dict(search=tvc_search, episodes=tvc_episodes, raw=tvc_raw, direct=True),
     "channela": dict(search=cha_search, episodes=cha_episodes, raw=cha_raw, direct=True),
     "mbn": dict(search=mbn_search, episodes=mbn_episodes, raw=mbn_raw, direct=False),   # CORS 가 mbn.co.kr 전용
-    "tving": dict(search=tving_search, episodes=tving_episodes, raw=tving_raw, direct=True),   # 예전 작품만 받기 가능
+    "tving": dict(search=tving_search, episodes=tving_episodes, raw=tving_raw, direct=True),   # 회차 정보가 image-pip 인 작품만 받기 가능, 나머지는 유무만
     "wavve": dict(search=wavve_search, episodes=wavve_episodes, raw=None, direct=False),  # 유무만
     "coupang": dict(search=coupang_search, episodes=coupang_episodes, raw=None, direct=False),  # 유무만
 }
@@ -605,10 +653,12 @@ def search(source: str, q: str, response: Response, _=Depends(get_current_user))
 @router.get("/episodes")
 def episodes(source: str, id: str, response: Response, _=Depends(get_current_user)):
     src = _source(source)
-    eps = _cached(("e", source, id), lambda: _call(src["episodes"], id))
+    got = _cached(("e", source, id), lambda: _call(src["episodes"], id))
+    eps, limited = got if isinstance(got, tuple) else (got, False)   # (회차, 최근 LIST_LIMIT 화로 잘렸는지)
     eps.sort(key=lambda e: (e["num"] is None, e["num"] or 0, e["label"]))
     response.headers["Cache-Control"] = f"private, max-age={TTL}"
-    return {"episodes": eps, "downloadable": src["raw"] is not None, "direct": src["direct"]}
+    return {"episodes": eps, "downloadable": src["raw"] is not None, "direct": src["direct"],
+            "limited": LIST_LIMIT if limited else None}
 
 
 class FilesRequest(BaseModel):

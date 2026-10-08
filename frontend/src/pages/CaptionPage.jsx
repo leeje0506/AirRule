@@ -13,7 +13,7 @@ const SITES = [
   { id: 'tvchosun', label: 'TV조선', extract: true },
   { id: 'channela', label: '채널A', extract: true },
   { id: 'mbn', label: 'MBN', extract: true },
-  { id: 'tving', label: 'TVING (예전 작품)', extract: true },
+  { id: 'tving', label: 'TVING', extract: true },
   { id: 'wavve', label: '웨이브', extract: false },
   { id: 'coupang', label: '쿠팡플레이', extract: false },
 ];
@@ -371,6 +371,11 @@ export default function CaptionPage() {
                   </p>
                 )}
               </div>
+              {data.limited && (
+                <p className="flex items-center gap-2 text-xs text-slate-600 bg-slate-100 rounded-xl px-4 py-2.5">
+                  <AlertTriangle size={14} /> 회차가 많아 최근 {data.limited}건까지만 표시합니다.
+                </p>
+              )}
               {adult && (
                 <p className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-xl px-4 py-2.5">
                   <AlertTriangle size={14} /> 19세 회차는 로그인이 필요해 자막 유무를 확인할 수 없습니다 (? 표시). 필요하면 JTBC 사이트에서 직접 확인하세요.

@@ -97,4 +97,14 @@ export const validateApi = {
     client.post('/validate/run', { srt_text, broadcaster_id, items, params_override }).then((r) => r.data),
 };
 
+// ── 프로그램 찾기 (MBC·JTBC·TVING 자막) ──
+export const captionApi = {
+  search: (source, q) => client.get('/captions/search', { params: { source, q } }).then((r) => r.data),
+  episodes: (source, id) => client.get('/captions/episodes', { params: { source, id } }).then((r) => r.data),
+  // 서버 경유 받기(직접 받기 안 되는 사이트용) — 최대 10화 묶음, 원본 그대로 → [{ key, text, ext } | { key, error }]
+  files: (source, keys) => client.post('/captions/files', { source, keys }).then((r) => r.data.files),
+  // 주소로 받기 예비 — 브라우저 직접 받기가 막힌 지원 사이트 자막 주소만, 최대 10개 → [{ url, text, ext } | { url, error }]
+  fetchUrls: (urls) => client.post('/captions/fetch', { urls }).then((r) => r.data.files),
+};
+
 export default client;

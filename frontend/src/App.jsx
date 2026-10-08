@@ -7,6 +7,7 @@ import LibraryPage from './pages/LibraryPage';
 import MappingPage from './pages/MappingPage';
 import TestPage from './pages/TestPage';
 import ValidatePage from './pages/ValidatePage';
+import CaptionPage from './pages/CaptionPage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -33,6 +34,7 @@ function AppRoutes() {
         <Route path="mapping" element={<MappingPage />} />
         <Route path="validate" element={<ValidatePage />} />
         <Route path="test" element={<TestPage />} />
+        <Route path="captions" element={<CaptionPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
